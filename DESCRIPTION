@@ -1,0 +1,10 @@
+Package: MicrobLiver_Olink
+Type: Project
+Version: 0.0.1
+Imports:
+    knitr,
+    rmarkdown,
+    distill
+Encoding: UTF-8
+Depends: 
+    R (>= 2.10)
