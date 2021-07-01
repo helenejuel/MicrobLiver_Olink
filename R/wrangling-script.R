@@ -13,28 +13,44 @@ usethis::use_data(meta, overwrite = T)
 load(here::here("data/olink.rda"))
 load(here::here("data/meta.rda"))
 
+# Alternative data loading from raw NPX data
+olink2 <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
+
 # Let the wrangling begin!
 str(olink)
 
 # change cytokine names
+# first remove all -
+# renamed_olink <- rename_with(olink, ~ gsub("-", "", .x))
+# then change spaces to _
+# then rename alpha/beta/gamma to a/b/g
 renamed_olink <- olink %>%
-    rename(MCP3 = `MCP-3`,
-           LAP_TGFb = `LAP TGF-beta-1`,
-           IL17C = `IL-17C`,
-           MCP1 = `MCP-1`,
-           IL17A = `IL-17A`,
-           IL20RA = `IL-20RA`,
-           IL2RB = `IL-2RB`,
-           IL1a = `IL-1 alpha`,
-           TGFa = `TGF-alpha`,
-           MCP4 = `MCP-4`,
-           FGF23 = `FGF-23`,
-           IL10RA = `IL-10RA`,
-           FGF5 = `FGF-5`,
-           MMP1 = `MMP-1`)
-# TODO: include all colnames with special characters
+    rename_with(~ gsub("-", "", .x)) %>%
+    rename_with(~ gsub(" ", "_", .x)) %>%
+    rename_with(~ gsub("alpha", "a", .x)) %>%
+    rename_with(~ gsub("beta", "b", .x)) %>%
+    rename_with(~ gsub("gamma", "g", .x))
+str(renamed_olink)
+# code to change an individual colname:
+# renamed_olink <- renamed_olink %>%
+    # rename(LAP_TGFb = `LAP TGF-beta-1`)
+
+# now rename cytokines in the metadata as well
+renamed_meta <- meta %>%
+    mutate(Assay = gsub("-", "", Assay)) %>%
+    mutate(Assay = gsub(" ", "_", Assay)) %>%
+    mutate(Assay = gsub("alpha", "a", Assay)) %>%
+    mutate(Assay = gsub("beta", "b", Assay)) %>%
+    mutate(Assay = gsub("gamma", "g", Assay))
+
+# And rename column
+renamed_meta <- renamed_meta %>%
+    rename(missing_data_freq = `Missing Data freq.`)
 
 # TODO: set LOD and change values <LOD
+str(renamed_meta)
+# LOD is in the column meta$LOD
+
 
 # TODO: change time_point and sample_type to factor
 
