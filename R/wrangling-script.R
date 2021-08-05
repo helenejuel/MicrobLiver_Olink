@@ -2,6 +2,7 @@
 source(here::here("R/package-loading.R"))
 
 # Import data
+### OLD METHOD!!!###
 olink <- readxl::read_excel(here::here("data-raw/20202249_Juel_NPX.xlsx"), sheet = "results")
 meta <- readxl::read_excel(here::here("data-raw/20202249_Juel_NPX.xlsx"), sheet = "assay_meta")
 
@@ -12,9 +13,6 @@ usethis::use_data(meta, overwrite = T)
 # Load data
 load(here::here("data/olink.rda"))
 load(here::here("data/meta.rda"))
-
-# Alternative data loading from raw NPX data
-olink2 <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
 
 # Let the wrangling begin!
 str(olink)
@@ -47,29 +45,3 @@ renamed_meta <- meta %>%
 renamed_meta <- renamed_meta %>%
     rename(missing_data_freq = `Missing Data freq.`)
 
-# TODO: set LOD and change values <LOD
-str(renamed_meta)
-# LOD is in the column meta$LOD
-
-
-# TODO: change time_point and sample_type to factor
-
-
-# filter cohorts
-alco <- renamed_olink %>%
-    filter(cohort == "ALCO")
-ald <- renamed_olink %>%
-    filter(cohort == "ALD")
-
-#
-
-
-
-# Plotting ----------------------------------------------------------------
-
-theme_set(theme_bw())
-
-# histogram
-alco %>%
-    ggplot(aes(x = IL1a)) +
-    geom_density()
