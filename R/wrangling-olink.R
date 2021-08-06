@@ -220,6 +220,12 @@ TODO: replace phenotype dataset with updated version
 
 str(GALA)
 
+# Add column for fibrosis level high or low
+GALA <- GALA %>%
+    mutate(fibrosis = if_else(te < 8, "low", "high"))
+GALA$fibrosis <- as.factor(GALA$fibrosis)
+summary(GALA$fibrosis)
+
 # Graph by Kleiner
 GALA %>%
     filter(!is.na(as.numeric(kleinerFscore))) %>%
@@ -236,6 +242,15 @@ GALA %>%
     geom_point(aes(color = cohort)) +
     geom_smooth(method = lm, color = "black") +
     scale_x_log10() +
+    ggtitle("IL8")
+
+# Graph by dichotomized fibrosis
+GALA %>%
+    filter(!is.na(fibrosis)) %>%
+    filter(Assay == "IL8") %>%
+    ggplot(aes(x = fibrosis, y = corr_NPX)) +
+    geom_violin(draw_quantiles = c(0.5)) +
+    geom_jitter() +
     ggtitle("IL8")
 
 # Run linear mixed model
