@@ -380,3 +380,476 @@ olink_boxplot(ALCO,
               verbose = T,
               number_of_proteins_per_plot = 6) # only prints the last set of plots
 
+
+# Heatmap -----------------------------------------------------------------
+
+# Aim: create heatmap of all 92 cytokines' corr.NPX values against each other
+# Need to have each cytokine in a column
+GALA_heatmap <- pivot_wider(data = GALA,
+                            id_cols = c(SampleID, cohort, bmi, te), # This chooses which columns to keep
+                            names_from = Assay,
+                            values_from = corr_NPX)
+# Results in df with 486 obs (number of participants) and 92 variables + the number of variables added as id_cols = 96
+str(GALA_heatmap) # check
+
+# Change bmi to numeric
+GALA_heatmap$bmi <- as.numeric(GALA_heatmap$bmi)
+# Change cohort to factor
+GALA_heatmap$cohort <- as.factor(GALA_heatmap$cohort)
+
+# Save colnames to be included in heatmap as vector
+all_variables <- names(GALA_heatmap[, 3:ncol(GALA_heatmap)])
+# test_variables <- names(GALA_heatmap[, c(5,10,12,16)]) # select a smaller number of variables
+
+# Assign selected variables to the vector "variables", which will be used for correlation matrix and plotting
+variables <- all_variables
+
+# Create correlation matrix
+cor_matrix <- round(cor(GALA_heatmap[, variables],
+                        method = "spearman",
+                        use = "pairwise.complete.obs"),
+                    2)
+# Remove duplicate values if you want a correlation triangle
+cor_matrix[lower.tri(cor_matrix)] <- NA
+
+# Transform to a df with 3 columns: Var1, Var2, value (= correlation R2)
+# library(reshape2)
+cor_matrix <- melt(cor_matrix)
+# Change variable names to characters
+cor_matrix$Var1 <- as.character(cor_matrix$Var1)
+cor_matrix$Var2 <- as.character(cor_matrix$Var2)
+# Remove NAs (duplicates) if needed
+cor_matrix <- na.omit(cor_matrix)
+# str(cor_matrix) # check
+
+# Full heatmap (too many to really see)
+ggplot(cor_matrix, aes(Var2, Var1)) +
+  geom_tile(aes(fill=value), color="white") +
+  scale_fill_gradient2(low="blue", high="red", mid="white",
+                       midpoint=0, limit=c(-1,1), name="Correlation\n(Spearman)") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, size=4, hjust=1),
+        axis.text.y = element_text(size=4),
+        axis.title = element_blank()) +
+  ggtitle("All cytokines") +
+  ylim(variables) + xlim(variables) + # Select variables vector for xlim/ylim, to ensure a nice triangular heatmap
+  coord_equal()
+
+# Look at cytokines correlated with te or bmi
+# Create correlation matrix
+cor_matrix <- round(cor(GALA_heatmap[, variables],
+                        method = "spearman",
+                        use = "pairwise.complete.obs"),
+                    2)
+# DO NOT remove duplicate values
+
+# Transform to a df with 3 columns: Var1, Var2, value (= correlation R2)
+cor_matrix <- melt(cor_matrix)
+# Change variable names to characters
+cor_matrix$Var1 <- as.character(cor_matrix$Var1)
+cor_matrix$Var2 <- as.character(cor_matrix$Var2)
+
+# extract all rows containing te or bmi from the correlation matrix
+bmi_cor <- cor_matrix %>%
+    filter(Var1 == "bmi")
+te_cor <- cor_matrix %>%
+    filter(Var1 == "te")
+
+# Extract all values above a set threshold, removing self-correlation
+predictors <- te_cor %>%
+    filter(value > 0.5  & value < 1 | value < -0.5) %>%
+    arrange(desc(value))
+# predictors # check
+
+# To copy table
+# write.table(predictors,"clipboard",sep="\t")
+
+# Assign which variables to include in graph
+variables <- predictors$Var2 # significant variables
+variables <- all_variables
+
+# plot all or significant cytokines against one assay
+theme_set(theme_bw(base_size = 8))
+ggplot(te_cor, aes(Var2, Var1)) + #change data= to relevant correlation
+    geom_tile(aes(fill = value), color="white") +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                         midpoint = 0, limit = c(-1,1), name = "Correlation\n(Spearman)") +
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, size=4, hjust=1),
+          axis.text.y = element_text(size=4), axis.title = element_blank())
+    # # ggtitle("All vaccinees") +
+    # xlim(variables)
+# save as image 1500x100
+
+#graph individual correlations ggplot
+# theme_set(theme_bw(base_size = 14))
+# ggplot(data=orderedData2, aes(x=Neut, y=orderedData2[,"033VD1"])) +
+# geom_point(size=4) +
+# geom_smooth(method=lm, color="black") +
+# scale_y_log10()
+
+# loop plots
+graphics.off()
+par(mfrow=c(3,4), mar=c(2,3,2,1), oma=c(0,0,2,0))
+# CAFpeptides <- c("033VD1", "034VD1", "036VD1", "180", "185", "191", "261VD4", "262VD4", "263VD4", "264VD4")
+peptides <- predictors[c(1:nrow(predictors)-1),"Var1"] #select row 1 to nrow-1 to remove "Phago"
+# peptides <- predictors[c(1:nrow(predictors)),"Var1"] #select nrow if self-correlation has already been removed
+# simple plots
+# for(i in peptides) {
+#   plot(x=orderedData4[,"Neut"], y=orderedData4[,i], ylim = c(0,66000), main=paste(peptides[i], "Neut"), xlab="", ylab="")
+# }
+
+# log10 axes and lm
+for(i in peptides) {
+    x1 = orderedData2[,"Neut.D126"] #change to functional assay of interest
+    y1 = orderedData2[,i]
+    mod1 <- lm(log10(y1) ~ log10(x1))
+    cor1 <- cor.test(x1, y1, alternative=c("two.sided"), method=c("spearman"), exact=NULL)
+    plot(x=x1, y=y1, log="xy", xlab="", ylab="", main=paste0(i, " rho=", round(cor1$estimate["rho"],2)))
+    abline(mod1)
+}
+
+# add p-values within the main
+# "p=",round(cor1$p.value, 4)
+# 1 row: 600x200
+# 3 rows: 600x
+
+# Correlation test
+x1 = orderedData2[,"Phago"]
+y1 = orderedData2[,40] #40=peptide99
+cor.test(x1, y1, alternative=c("two.sided"), method=c("spearman"), exact=NULL)
+
+# get sequence of selected peptides - subtract 61 from peptide_number to choose line
+annotation[264,c(1:3)]
+annotation[c(261,264),c(1:3)] #all vaccinees Neut
+annotation[c(254,257,259,261),c(1:3)] #Alum Neut
+annotation[c(33,34,36,180,185,191,261:264),c(1:3)] #CAF Neut
+
+write.table(annotation[c(33,34,36,180,185,191,261:264),c(1:3)],"clipboard",sep="\t")
+
+
+# PCA analysis ------------------------------------------------------------
+### NOT WORKING!
+# PCA_exclude<-which(is.na(Norm.test)) # to remove problematic columns, e.g. all values are identical or not numeric
+PCA_exclude <- c(1:3, 28:99, 121:144)# to remove ID, PS, vaccine, mucosa data except muc.norm2
+
+# t(names(VG))
+
+PCA.data <- VG[, -PCA_exclude] #All numeric attributes, all vaccinated
+
+# Standardization
+means <- colMeans(PCA.data, na.rm=T) # find means
+datzeromean <- t(apply(PCA.data,1,'-',means)) #subtract means from all values
+colMeans(datzeromean,na.rm=T) #colmeans should now be ~0
+standard.deviation <- apply(PCA.data,2,sd,na.rm=T) #find SDs
+standard.data <- t(apply(datzeromean,1,"/",standard.deviation)) #divide normalised data with SD
+standard.corrected.data <- standard.data
+apply(standard.corrected.data,2,sd, na.rm = T) #SDs should now be 1
+
+for(i in 1:dim(standard.corrected.data)[2]){
+    standard.corrected.data[,i][is.na(standard.data[,i])]<-means[i]/standard.deviation[i] # substitute all NA with means/sd for the specific column
+}
+sum(is.na(standard.corrected.data)) # Test for any NAs = 0
+
+All.identical.test<-rep(NA,dim(standard.corrected.data)[2]) # Test for any columns with only identical values (if sd = 0 then scale will divide the data with 0 = inf
+for(i in 1:dim(standard.corrected.data)[2]){
+    All.identical.test[i]<-length(unique(standard.corrected.data[,i]))
+}
+standard.corrected.data[,which(All.identical.test==1)]
+All.identical.names<-colnames(standard.corrected.data)[which(All.identical.test==1)]
+# remove columns that cannot be used for pca
+if(length(which(All.identical.test==1))==0){
+    print("No columns deleted")
+} else {
+    standard.corrected.data<-standard.corrected.data[,-which(All.identical.test==1)]
+    cat(All.identical.names,"has been removed from PCA analysis")
+}
+
+# Use prcomp of the standardized corrected data
+pca.data<-prcomp(standard.corrected.data, center=F,scale.=F) # center and scale already performed manually
+summary(pca.data) # to view cumulative proportion of variance explained
+pca.data # to view all principal component directions, copy paste to notepad and saved as txt file
+# PC.Directions<-pca.data$rotation
+# PC.Directions[,1:4] #view weights of first 4 PCs
+# library(openxlsx)
+write.xlsx(pca.data, file="2019-03-22 PCA directions.xlsx", row.names = F)
+
+qplot(x=1:dim(PCA.data)[2], y=summary(pca.data)$importance[3,], ylab="Cumulative variance", xlab="Number of PCs included", main="PCA vaccine groups")
+
+# Plot first two principal components
+qplot(PC1,PC2,data=as.data.frame(pca.data$x))
+
+# Add labels and colors
+kid <- 1:dim(PCA.data)[1]
+endpoints <- gamk[,c(2:7)] #all kids
+endpoints <- SUSC[,c(2:7)] #only susceptible
+str(endpoints)
+plot.pca<-data.frame(pca.data$x, kid, endpoints)
+# plot.pca<-data.frame(pca.data$x,Animal,endpoints,Clear=ggdata$Clear,IFU.D3=ggdata$IFU.D3)
+
+# Label kid number to points
+qplot(PC1,PC3, data=plot.pca, geom=c("point","text"), vjust=(-1), label=kid)
+
+# color points according to endpoint
+qplot(PC1,PC2, color=susceptible, data=plot.pca, main="PCA all kids")
+ggplot(data=plot.pca, aes(x=PC1, y=PC2)) + geom_point(aes(color=Village), size=4)
+qplot(PC1,PC2, color=inf, data=plot.pca)
+qplot(PC1,PC2, color=dis, data=plot.pca)
+ggplot(data=plot.pca, aes(x=PC1, y=PC2)) +
+    geom_point(aes(color=log10(load)), size=4) +
+    scale_color_gradient(low="blue", high="red")
+ggplot(data=plot.pca, aes(x=PC2, y=PC5)) +
+    geom_point(aes(color=inf.lgth.med, shape=Village), size=4) +
+    scale_color_gradient(low="blue", high="red")
+ggplot(data=plot.pca, aes(x=PC1, y=PC2)) +
+    geom_point(aes(fill=inf.lgth.med, size=susceptible, color=Village), shape=21) + #21 has line and fill
+    scale_fill_gradient(low="blue", high="red")
+
+
+# combined plots
+p1 <- qplot(PC1,PC2, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+p2 <- qplot(PC1,PC3, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+p3 <- qplot(PC1,PC4, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+p4 <- qplot(PC2,PC3, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+p5 <- qplot(PC2,PC4, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+p6 <- qplot(PC3,PC4, color=susceptible, data=plot.pca) + theme(legend.position = "none")
+# library(cowplot)
+plot_grid(p1,p2,p3,p4,p5,p6, nrow=2)
+
+# Plot one PC with one end point
+qplot(PC1,log10(load), color=susceptible, data=plot.pca)
+qplot(PC1, log10(inf.lgth.med), color=Village, shape=susceptible, data=plot.pca)
+qplot(PC1, susceptible, color=Village, data=plot.pca)
+
+
+# Linear prediction models --------------------------------------------------------------
+
+# select all SvD peptides from the CAF group
+orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("CAF")]
+# orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("Alum")]
+# orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("CAF", "Alum")]
+# transpose and add neutralisation titres
+orderedData2 <- as.data.frame(cbind(t(orderedData1), pdata[pdata[,"Vaccine"] %in% c("CAF"), "Mean.titre.D126.F"]))
+p1 <- c(paste0(annotation[,"CTH522.peptide.no"], annotation[,"Domain"]), "Neut")
+names(orderedData2) <- p1
+# Find NAs
+sum(is.na(CAF)) #2 NAs - both in Neut titre:
+for(i in names(CAF)) {
+    print(which(is.na(CAF[,i]), arr.ind = T))
+}
+which(is.na(CAF[,6]),arr.ind=T) #none in D126 titre
+sum(is.na(orderedData2)) #no NAs
+
+# Linear regression automatically removes the whole row if there is an NA, so columns with many NAs should be removed, e.g.
+# lindata <- orderedData2[,-20]
+lindata <- orderedData2
+str(lindata)
+
+### Load toolbox
+# setwd('C:/Users/HBJU/Documents/R/R_scripts/02450Toolbox_R') #Should change this to source directly
+source("Tools/source_tools.R")
+path = "Tools/"
+sourceDir(path, exceptions=c("source_tools.R"))
+library(cvTools)
+
+### Cross-Validation - Linear regression
+# This function takes as input a training and a test set.
+#  1. It fits a linear model on the training set using lm.
+#  2. It estimates the output of the test set using predict.
+#  3. It computes the sum of squared errors.
+funLinreg <- function(X_train, y_train, X_test, y_test){
+    Xr <- data.frame(X_train)
+    Xtest <- data.frame(X_test)
+    if(dim(as.matrix(X_train))[2]!=0){
+        xnam <- paste("X", 1:dim(as.matrix(X_train))[2], sep="")
+        colnames(Xr) <- xnam
+        colnames(Xtest) <- xnam
+        (fmla <- as.formula(paste("y_train ~ ", paste(xnam, collapse= "+"))))
+    }else{
+        xnam <- 1
+        (fmla <- as.formula(paste("y_train ~ ", paste(xnam, collapse= "+"))))
+    }
+    mod = lm(fmla, data=Xr)
+    preds <- predict(mod, newdata = Xtest)
+    sum((y_test-preds)^2)
+}
+
+### Two-layer cross validation
+# Create crossvalidation partition for evaluation
+EOI<-"Neut" # End point of interest
+X <-lindata[,c(1:ncol(lindata)-1)]
+y <-lindata[,EOI]
+attributeNames <- names(lindata[,c(1:ncol(lindata)-1)])
+N = dim(lindata)[1]
+M = dim(X)[2]
+K = 14
+
+# set.seed(42) # for reproducibility, not used for leave-one-out
+CV <- cvFolds(N, K=K)
+# set up vectors that will store sizes of training and test sizes
+CV$TrainSize <- c()
+CV$TestSize <- c()
+
+# Initialize variables
+Features <- matrix(rep(NA, times=K*M), nrow=K)
+Error_train <- matrix(rep(NA, times=K), nrow=K)
+Error_test <- matrix(rep(NA, times=K), nrow=K)
+Error_train_fs <- matrix(rep(NA, times=K), nrow=K)
+Error_test_fs <- matrix(rep(NA, times=K), nrow=K)
+Error_train_gs <- matrix(rep(NA, times=K), nrow=K)
+Error_test_gs <- matrix(rep(NA, times=K), nrow=K)
+
+Cost.threshold <- 0.01
+
+# Start the clock!
+ptm <- proc.time()
+
+# For each crossvalidation fold
+for(k in 1:K){
+    cat('Crossvalidation fold ', k, '/',K,"\n")
+
+    # Extract the training and test set
+    X_train <- X[CV$subsets[CV$which!=k], ];
+    y_train <- y[CV$subsets[CV$which!=k]];
+    X_test <- X[CV$subsets[CV$which==k], ];
+    y_test <- y[CV$subsets[CV$which==k]];
+    CV$TrainSize[k] <- length(y_train)
+    CV$TestSize[k] <- length(y_test)
+
+    # Use 13-fold crossvalidation for sequential feature selection (only 13 since 1 is used for outer loop)
+    fsres <- forwardSelection(funLinreg, X_train, y_train, nfeats=NULL, minCostImprovement=Cost.threshold, stoppingCrit = "minCostImprovement", cvK=K-1);
+
+    # Extract selected features from the forward selection routing
+    selected.features <- fsres$featsIncluded
+
+    # Save the selected features
+    Features[k,] = fsres$binaryFeatsIncluded
+
+    # Fix to select the right number (lowest squared error) of attributes
+    Correction<-which(fsres$costs==min(fsres$costs))
+    selected.features <- fsres$featsIncluded[1:Correction]
+    binary.selected.features<-names(X_train)%in%names(X_train)[selected.features]
+    Features[k,]<-binary.selected.features
+    # The function forwardSelection is supposed to terminate if squared error increases when using minCostImprovement. It correctly terminates after it see an increase, but still chooses to use the feature that caused the increase. Fixed 28/10-17
+    # Correction<-length(fsres$costs) # run without fix
+
+    # Compute squared error without feature subset selection
+    Error_train[k] = funLinreg(X_train, y_train, X_train, y_train);
+    Error_test[k] = funLinreg(X_train, y_train, X_test, y_test);
+
+    #Compute squared error of guessing as average y
+    Error_train_gs[k] = sum((y_train-mean(y_train))^2)
+    Error_test_gs[k] = sum((y_test-mean(y_train))^2)
+
+    # Compute squared error with feature subset selection
+    Error_train_fs[k] = funLinreg(X_train[,selected.features], y_train, X_train[,selected.features], y_train);
+    Error_test_fs[k] = funLinreg(X_train[,selected.features], y_train, X_test[,selected.features], y_test);
+
+    # Show variable selection history
+    # mfig(sprintf('(%d) Feature selection',k));
+    I = length(fsres$costs[1:Correction]) # Number of iterations
+    par(mfrow=c(1,2))
+    # Plot error criterion
+    plot(fsres$costs[1:Correction], xlab='Iteration', ylab='Squared error (crossvalidation)', main='Value of error criterion');
+    # Plot feature selection sequence
+    bmplot(attributeNames, 1:I, fsres$binaryFeatsIncludedMatrix[1:Correction,]);
+}
+# Stop the clock
+proc.time() - ptm
+
+# Display results
+print('Linear regression without feature selection:')
+print(paste('- Training error:', sum(Error_train)/sum(CV$TrainSize)));
+print(paste('- Test error:', sum(Error_test)/sum(CV$TestSize)));
+
+print('Linear regression with sequential feature selection:');
+print(paste('- Training error:', sum(Error_train_fs)/sum(CV$TrainSize)));
+print(paste('- Test error:', sum(Error_test_fs)/sum(CV$TestSize)));
+
+print('Guessing the average of the output:');
+print(paste('- Training error:', sum(Error_train_gs)/sum(CV$TrainSize)));
+print(paste('- Test error:', sum(Error_test_gs)/sum(CV$TestSize)));
+
+# Show the selected features
+# dev.off()
+par(mfrow=c(1,1))
+bmplot(attributeNames, 1:K, Features, xlab='Crossvalidation fold', ylab='', main='Attributes selected');
+# For array data, bmplot is not appropriate (too many attributes)
+# Want to extract the selected features from each fold and save in a df
+Features #logical matrix with which peptides were selected in each fold
+which(Features[1,]==T) #which features in fold 1 were selected
+
+# Prepare matrix
+feat <- matrix(nrow=K, ncol=12)
+feat[i,] <- which(Features[i,]==T) #not working
+
+### EXTRACT FEATURES - NEEDS WORK
+for(i in c(1:K)){
+    print(which(Features[i,]==T))
+} #kinda works, but prints ascending
+
+# Calculating Test error using best model only and not the average
+best.lin.attributes <- c("018", "035VD1", "176", "194", "226")
+
+Error_lin_train<-rep(NA,K)
+Error_lin_test<-rep(NA,K)
+for(k in 1:K){
+    cat('Crossvalidation fold ', k, '/',K,"\n")
+
+    # Extract the training and test set
+    X_train <- X[CV$which!=k, best.lin.attributes];
+    y_train <- y[CV$which!=k];
+    X_test <- X[CV$which==k, best.lin.attributes];
+    y_test <- y[CV$which==k];
+    CV$TrainSize[k] <- length(y_train)
+    CV$TestSize[k] <- length(y_test)
+
+    # Compute squared error
+    Error_lin_train[k] = funLinreg(X_train, y_train, X_train, y_train);
+    Error_lin_test[k] = funLinreg(X_train, y_train, X_test, y_test);
+}
+
+print('Linear regression with 5 best attibutes:');
+print(paste('- Training error:', sum(Error_lin_train)/sum(CV$TrainSize)));
+print(paste('- Test error:', sum(Error_lin_test)/sum(CV$TestSize)));
+
+Best.lin.test.error<-sum(Error_lin_test)/sum(CV$TestSize)
+
+### Check a model ###
+#5-parameter
+# best.model <- lm(formula = Neut ~ 018+035VD1+176+194+226, data=lindata) #not working: column names that are numbers are not syntactically valid
+best.model <- lm(formula = Neut ~ `018` + `035VD1` + `176` + `194` + `226`, data=lindata) #wrap invalid column names in backticks
+
+# Graph model y= a + bx1 + cx2 + dx3 + ex4 + fx5
+# model5 <- best.model$coefficients[1] + best.model$coefficients[2]*lindata[,names(best.model$coefficients)[2]] + best.model$coefficients[3]*lindata[,names(best.model$coefficients)[3]] + best.model$coefficients[4]*lindata[,names(best.model$coefficients)[4]] + best.model$coefficients[5]*lindata[,names(best.model$coefficients)[5]] + best.model$coefficients[6]*lindata[,names(best.model$coefficients)[6]] #not working because of the backticks
+
+# best.lin.attributes <- c("018", "035VD1", "176", "194", "226")
+model5 <- best.model$coefficients[1] + best.model$coefficients[2]*lindata[,best.lin.attributes[1]] + best.model$coefficients[3]*lindata[,best.lin.attributes[2]] + best.model$coefficients[4]*lindata[,best.lin.attributes[3]] + best.model$coefficients[5]*lindata[,best.lin.attributes[4]] + best.model$coefficients[6]*lindata[,best.lin.attributes[5]]
+
+# 3-parameter
+BLA <- c("018", "035VD1", "194")
+best.model <- lm(formula = Neut ~ `018` + `035VD1` + `194`, data=lindata)
+model3 <- best.model$coefficients[1] + best.model$coefficients[2]*lindata[,BLA[1]] + best.model$coefficients[3]*lindata[,BLA[2]] + best.model$coefficients[4]*lindata[,BLA[3]]
+
+# 2-parameter
+BLA <- c("035VD1", "194")
+best.model <- lm(formula = Neut ~ `035VD1` + `194`, data=lindata)
+model2 <- best.model$coefficients[1] + best.model$coefficients[2]*lindata[,BLA[1]] + best.model$coefficients[3]*lindata[,BLA[2]]
+
+# 1-parameter
+BLA <- "035VD1"
+best.model <- lm(formula = Neut ~ `035VD1`, data=lindata)
+model1 <- best.model$coefficients[1] + best.model$coefficients[2]*lindata[,BLA[1]]
+
+# theme_set(theme_bw(base_size = 14))
+ggplot(data= lindata, aes(x=model2, y=Neut)) +
+    geom_point(size=3) +
+    geom_smooth(method=lm) +
+    xlab("Neut_prediction") +
+    #ggtitle("5-parameter model: 018, 035VD1, 176, 194, 226")
+    #ggtitle("3-parameter model: 018, 035VD1, 194")
+    ggtitle("2-parameter model: 035VD1, 194")
+#ggtitle("1-parameter model: 035VD1")
+#size 600x400
+
+# graph residual error vs attributes
+ggplot(data=lindata, aes(x=Ocu.G.W22, y=(Clear-model2))) + geom_point(size=3) + ylab("Residual error")
+ggplot(data=lindata, aes(x=Ser.Max, y=(Clear-model2))) + geom_point(size=3) + ylab("Residual error")
