@@ -1,0 +1,286 @@
+---
+title: "AlcoChallenge"
+author: "Helene Bæk Juel"
+date: "6/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load packages
+source(here::here("R/package-loading.R"))
+```
+
+## Load full dataset
+```{r load-data}
+# Load data from raw NPX data
+olink <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
+
+# Fix issue with TIPS naming
+# replace typo TIEP80EC	--> TIPS80EC
+olink2 <- olink %>%
+    mutate(SampleID = sub("TIEP80EC", "TIPS80EC", SampleID))
+# replace typo TIPSKC/93 --> TIPS93
+olink2 <- olink2 %>%
+    mutate(SampleID = sub("TIPSKC/93", "TIPS93", SampleID))
+
+# Add columns for cohort and pt_ID to be able to extract each cohort
+olink2 <- olink2 %>%
+    mutate(cohort = sub("[0-9]{1,4}.*$", "", SampleID)) %>% # substitute 1-4 numbers and everything after this (.*$) with nothing
+    mutate(cohort = sub("_.*$", "", cohort)) # substitute anything after a _ with nothing to remove long control names and just keep "CONTROL"
+
+# change cytokine names
+# first remove all -
+# then change spaces to _
+# then rename alpha/beta/gamma to a/b/g
+olink3 <- olink2 %>%
+    mutate(Assay = gsub("-", "", Assay)) %>%
+    mutate(Assay = gsub(" ", "_", Assay)) %>%
+    mutate(Assay = gsub("alpha", "a", Assay)) %>%
+    mutate(Assay = gsub("beta", "b", Assay)) %>%
+    mutate(Assay = gsub("gamma", "g", Assay))
+
+# change values < LOD of that assay to 50% LOD
+olink4 <- olink3 %>%
+    mutate(corr_NPX = if_else(LOD > NPX, LOD/2, NPX))
+```
+
+# Wrangling and QC
+
+## Subset Alcochallenge datapoints
+```{r QC1}
+# ALCO
+# Create columns for pt_ID, time_point, sample_type for each cohort
+ALCO <- olink4 %>%
+    filter(cohort == "ALCO") %>%
+    mutate(pt_ID = sub("^[A-Z]{2,7}", "", sub("-.+$", "", SampleID))) %>%  # substitute 2-7 letters and anything after a "-" with nothing
+    mutate(time_point = sub("^.+-T", "", sub("S.+$", "", SampleID))) %>% # add timepoint
+    mutate(sample_type = sub("^.+S", "", SampleID)) # add sample_type (peripheral or liver vein)
+
+# Remove duplicate sample
+# ALCO %>%
+#     filter(sample_type == "1-d") #92 duplicates (1 sample)
+ALCO <- ALCO %>%
+    filter(sample_type != "1-d") # goes from 22172 to 22080 obs
+
+```
+
+
+## Visualize potential outliers by IQR vs. sample median
+```{r QC_plot}
+olink_qc_plot(ALCO)
+```
+
+6 samples have a QC warning and 2 appear to be outliers
+
+## Further QC
+```{r QC2}
+# remove samples with QC warning
+# ALCO_fail <- ALCO %>%
+#     filter(QC_Warning != "Pass") # 552 obs = 6 samples
+# ALCO_fail %>%
+#     filter(pt_ID != "106") - all QC warnings are from pt 106
+ALCO <- ALCO %>%
+    filter(QC_Warning == "Pass") # goes from 22080 to 21528 obs
+
+
+# Add subgroup column: 100=ALD, 200=NAFLD, 300=healthy
+ALCO$pt_ID <- as.numeric(ALCO$pt_ID)
+ALCO <- ALCO %>%
+    mutate(subgroup = if_else(pt_ID > 300, "Healthy", if_else(pt_ID > 200, "NAFLD", "ALD")))
+
+# Change pt_ID, time_point, sample_type and subgroup to factor
+ALCO$pt_ID <- as.factor(ALCO$pt_ID) # 39 indv - ID106 removed in QC warning
+ALCO$time_point <- as.factor(ALCO$time_point) # 3 TPs
+ALCO$sample_type <- as.factor(ALCO$sample_type) # 2 sample types
+ALCO$subgroup <- as.factor(ALCO$subgroup) # 3 subgroups
+
+# Change order of subgroups
+ALCO$subgroup <- ordered(ALCO$subgroup, levels = c("Healthy", "NAFLD", "ALD"))
+
+```
+
+# Results
+
+## Plot all cytokines by patient subgroup (not included)
+```{r plot_all, include = F}
+# Olink ID list
+# cytokines <- levels(as.factor(olink4$Assay)) # protein abbreviations
+cytokine_IDs <- levels(as.factor(olink4$OlinkID)) #Olink IDs
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[1:16],
+              verbose = T,
+              number_of_proteins_per_plot = 16)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[17:32],
+              verbose = T,
+              number_of_proteins_per_plot = 16)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[33:48],
+              verbose = T,
+              number_of_proteins_per_plot = 16)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[49:64],
+              verbose = T,
+              number_of_proteins_per_plot = 16)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[65:80],
+              verbose = T,
+              number_of_proteins_per_plot = 16)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = cytokine_IDs[81:92],
+              verbose = T,
+              number_of_proteins_per_plot = 12)
+
+```
+
+## ANOVA by patient subgroup
+```{r ANOVA_subgroup}
+anova_ALCO_group <- olink_anova(ALCO, variable = "subgroup")
+
+sign_cytokines <- anova_ALCO_group %>%
+    filter(Adjusted_pval < 0.0001) %>%
+    pull(Assay)
+
+print(sign_cytokines)
+```
+
+## Plot significant cytokines by patient subgroup
+```{r plot_subgroup}
+# Extract significant protein IDs
+sign_IDs <- anova_ALCO_group %>%
+    filter(Adjusted_pval < 0.0001) %>%
+    pull(OlinkID)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[1:9],
+              verbose = T,
+              number_of_proteins_per_plot = 9)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[10:18],
+              verbose = T,
+              number_of_proteins_per_plot = 9)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[19:27],
+              verbose = T,
+              number_of_proteins_per_plot = 9)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[28:36],
+              verbose = T,
+              number_of_proteins_per_plot = 9)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[37:45],
+              verbose = T,
+              number_of_proteins_per_plot = 9)
+
+olink_boxplot(ALCO,
+              variable = "subgroup",
+              olinkid_list = sign_IDs[46:52],
+              verbose = T,
+              number_of_proteins_per_plot = 7)
+```
+
+
+
+## ANOVA by sample type
+```{r ANOVA_sample}
+anova_ALCO_sample <- olink_anova(ALCO, variable = "sample_type")
+
+```
+
+## Plot significant cytokines by sample type
+```{r plot_sample}
+# Extract significant protein IDs
+sign_IDs <- anova_ALCO_sample %>%
+    filter(Adjusted_pval < 0.001) %>%
+    pull(OlinkID)
+
+olink_boxplot(ALCO,
+              variable = "sample_type",
+              olinkid_list = sign_IDs,
+              verbose = T,
+              number_of_proteins_per_plot = 5)
+```
+
+
+## ANOVA by timepoint in liver vein
+TODO: check sample_type naming
+```{r ANOVA_liver_TP}
+ALCO_livervein <- ALCO %>% 
+    filter(sample_type == 2)
+
+anova_ALCO_liver_TP <- olink_anova(ALCO_livervein, variable = "time_point")
+
+```
+## Plot significant cytokines by timepoint in liver vein
+```{r plot_liver_TP}
+# Extract significant protein IDs
+sign_IDs <- anova_ALCO_liver_TP %>%
+    filter(Adjusted_pval < 0.001) %>%
+    pull(OlinkID)
+
+olink_boxplot(ALCO_livervein,
+              variable = "time_point",
+              olinkid_list = sign_IDs,
+              verbose = T,
+              number_of_proteins_per_plot = 3)
+```
+
+## ANOVA by timepoint in peripheral blood
+```{r ANOVA_peripheral_TP}
+ALCO_peripheral <- ALCO %>% 
+    filter(sample_type == 1)
+
+anova_ALCO_peripheral_TP <- olink_anova(ALCO_peripheral, variable = "time_point")
+
+```
+## Plot significant cytokines by timepoint in peripheral blood
+```{r plot_peripheral_TP}
+# Extract significant protein IDs
+sign_IDs <- anova_ALCO_peripheral_TP %>%
+    filter(Adjusted_pval < 0.001) %>%
+    pull(OlinkID)
+
+olink_boxplot(ALCO_peripheral,
+              variable = "time_point",
+              olinkid_list = sign_IDs,
+              verbose = T,
+              number_of_proteins_per_plot = 2)
+```
+
+### The following packages and versions were used to create this report
+```{r sessioninfo}
+sessionInfo()
+```
+
+
+### This document was knitted on
+```{r knitdate}
+Sys.Date()
+```
+
+
+
+
