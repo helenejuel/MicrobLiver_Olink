@@ -1,6 +1,9 @@
 # Load packages
 source(here::here("R/package-loading.R"))
 
+
+# Load raw data -> olink4 -------------------------------------------------
+
 # Load data from raw NPX data
 olink <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
 
@@ -75,7 +78,9 @@ load(here::here("data/olink4.rda"))
 cytokines <- levels(as.factor(olink4$Assay)) # protein abbreviations
 cytokine_IDs <- levels(as.factor(olink4$OlinkID))
 
-# ALCO
+
+# Alcochallenge -----------------------------------------------------------
+
 # Create columns for pt_ID, time_point, sample_type for each cohort
 ALCO <- olink4 %>%
     filter(cohort == "ALCO") %>%
@@ -114,8 +119,16 @@ ALCO$subgroup <- ordered(ALCO$subgroup, levels = c("Healthy", "NAFLD", "ALD"))
 
 str(ALCO)
 
+# save dataset in data folder
+usethis::use_data(ALCO, overwrite = T) # not done yet
 
-# RFX
+# Load dataset
+# load(here::here("data/ALCO.rda"))
+
+
+
+# Rifaximin ---------------------------------------------------------------
+
 RFX <- olink4 %>%
     filter(cohort == "RFX") %>%
     mutate(pt_ID = sub("^[A-Z]{2,7}", "", sub("-.+$", "", SampleID))) %>%
@@ -135,7 +148,9 @@ RFX %>% filter(time_point == 2) # 11,500 rows = 125 ppts
 RFX %>% filter(time_point == 3) # 6,532 rows = 71 ppts
 
 
-# TIPS
+
+# TIPS --------------------------------------------------------------------
+
 TIPS <- olink4 %>%
     filter(cohort == "TIPS") %>%
     mutate(pt_ID = sub("^[A-Z]{2,7}", "", SampleID)) %>%
@@ -146,87 +161,168 @@ TIPS <- olink4 %>%
 
 
 # GALA --------------------------------------------------------------------
-# Load dataset
+
+### Load olink dataset
 load(here::here("data/olink4.rda"))
 
 GALA_olink <- olink4 %>%
-    filter(cohort == "ALD" | cohort == "HP") %>%
-    mutate(sample_type = sub("^.+[0-9]{1,3}", "", SampleID)) # duplicate sample marked as "-d"
-
+    filter(cohort == "ALD" | cohort == "HP") %>% #50692 obs = 551 samples
+    mutate(sample_type = sub("^.+[0-9]{1,3}", "", SampleID)) # duplicate samples are marked as "-d"
 # str(as.factor(GALA_olink$sample_type)) # check we have the duplicate samples as "-d"
 
 # Remove duplicate samples
-# GALA_olink %>%
-#     filter(sample_type == "-d") #276 duplicates (3 samples)
 GALA_olink <- GALA_olink %>%
-    filter(sample_type != "-d")  # goes from 50692 to 50416 obs
+    filter(sample_type != "-d")  # goes from 50692 to 50416 obs = 276 duplicates (3 samples)
 
 GALA_olink$sample_type <- NULL # remove sample_type column
 
-# remove samples with QC warning
-fail <- GALA_olink %>%
-    filter(QC_Warning != "Pass") # 1012 obs (12 samples)
-unique(fail$SampleID)
+# Assess samples with QC warning
+# fail <- GALA_olink %>%
+#     filter(QC_Warning != "Pass") # 1012 obs (12 samples)
+# unique(fail$SampleID)
 
+# remove samples with QC warning
 GALA_olink <- GALA_olink %>%
     filter(QC_Warning == "Pass") # goes from 50416 to 49404 obs
 
-# Load phenotype data
-GALA_SIP_pheno <- read_excel(here::here("data-raw/ALD_HP_SIP_phenotypes.xlsx"), sheet = "small")
-str(GALA_SIP_pheno)
-# Change gender, abstinent to factor
-# for(i in c(2,4)) {
-#     GALA_SIP_pheno[,i] = as.factor(GALA_SIP_pheno[,i]} # not working, but should as per old code:
-# for(i in c(4:ncol(CHLM))) {CHLM[,i]= as.numeric(CHLM[,i])}
-# GALA_SIP_pheno[, "gender"] = as.factor(GALA_SIP_pheno[, "gender"] # also not working
-GALA_SIP_pheno$gender <- as.factor(GALA_SIP_pheno$gender) # works
-GALA_SIP_pheno$abstinent <- as.factor(GALA_SIP_pheno$abstinent) # also works
+# Remove extra 0's in SampleID HP004-HP096
+GALA_olink <- GALA_olink %>%
+  mutate(SampleID = sub("^HP[0]{1,2}", "HP", SampleID))
+# print(unique(sort(GALA_olink$SampleID)))
 
-#Change age GALA_SIP_pheno[,3] and clinical parameters GALA_SIP_pheno[,c(5:28)] to numeric
-GALA_SIP_pheno$age <- as.numeric(GALA_SIP_pheno$age)
-# for(j in c(5:28)) {
-#     GALA_SIP_pheno[, j] <- as.numeric(GALA_SIP_pheno[, j])
-# } # not working, skip for now
 
-# filter for ALD and HP
-GALA_pheno <- GALA_SIP_pheno %>%
-    mutate(cohort = sub("[0-9]{1,5}", "", ID)) %>%  # substitute 1-5 numbers with nothing
-    filter(cohort == "ALD" | cohort == "HP") %>%
-    mutate(SampleID = ID) %>% # add SampleID column to be able to merge with Olink data
-    mutate(pt_ID = sub("[A-Z]{2,3}", "", ID)) #remove the 2-3 letters in a new pt_ID column to merge with SIP
+### Load phenotype data
+# TODO: Change to new QC'ed phenotype dataset
+GALA_pheno2 <- read_excel(here::here("data-raw/ALD_HP_outcome_HBJ.xlsx"))
 
-# str(as.factor(GALA_pheno$cohort)) # check: 2 levels left
+# Change data columns to factor
+GALA_pheno2 <- GALA_pheno2 %>%
+  mutate(across(c(cohort, gender, fibrosis, inflam, abstinent, overuse, alcoholyears, abstinenceyears, liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor)) # consider including kleiner, starts_with("nas")
+# TODO: order factors
 
-# Add SIP samples that included as ALD
-SIP <- GALA_SIP_pheno %>%
-    mutate(cohort = sub("[0-9]{1,5}", "", ID)) %>%
-    filter(cohort == "SIP") %>%
-    mutate(pt_ID = sub("[A-Z]{3}", "", ID)) %>% #remove the 3 letters
-    mutate(SampleID = paste0("ALD", pt_ID))
+# Change data columns to numeric
+GALA_pheno2 <- GALA_pheno2 %>%
+  mutate(across(c(cpa, meld, elf, te, packyears, height, weight, bmi, waist, hip, whr, hr, map, sbp, dbp, alt, ast, alk, bili, chol, crp, ggt, glc, hba1c, hdl, iga, igg, igm, ldl, leu, trigly, insulin, homair, cpeptid, proc3, days_to_LRE, days_to_hospInf, days_to_mort), as.numeric))
 
-# rbind GALA_pheno with SIP
-GALA_SIP_pheno2 <- rbind(GALA_pheno, SIP) # back to 1187 individuals
-GALA_SIP_pheno2$cohort <- NULL # remove cohort column before merging
+# Change column name from CBMR_ID to SampleID to allow merging with olink data
+GALA_pheno2 <- GALA_pheno2 %>%
+  rename(SampleID = CBMR_ID)
 
-# match and merge Olink with phenotype data
-GALA <- merge(GALA_olink, GALA_SIP_pheno2, by = "SampleID") # goes from 49404 to 44712 lines from GALA_olink = 51 ppts
+str(GALA_pheno2)
 
-GALA_olink_IDs <- sort(unique(GALA_olink$SampleID)) #537 samples
-GALA_pheno_IDs <- sort(unique(GALA_pheno$SampleID)) #458 samples --> SIPHON-ALD samples removed from phenotype data! Attempted fixed by matching ID number between GALA_olink and GALA_pheno for SIP only, but still some phenotypes missing or not matched
+# Match and merge Olink with phenotype data
+GALA <- merge(GALA_olink, GALA_pheno2, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
+# Find missing sample
+print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
+# TODO: include phenotypes for ALD1302
 
-GALA_IDs <- sort(unique(GALA$SampleID)) #486 samples
-TODO: check that HP047 is matched with phenotype data and that there are no other instances of this issue.
-TODO: replace phenotype dataset with updated version
+### If using Nanna's phenotype dataset instead
+# GALA_SIP_pheno <- read_excel(here::here("data-raw/ALD_HP_SIP_phenotypes.xlsx"), sheet = "small") #39 variables
+# # str(GALA_SIP_pheno[,c(1:10)]) # Original phenotype columns converted to class chr
+#
+# # Remove PRS columns
+# GALA_SIP_pheno <- GALA_SIP_pheno[,c(1:28)] #28 variables
+#
+# # Change gender, abstinent to factor
+# # GALA_SIP_pheno$gender <- as.factor(GALA_SIP_pheno$gender) # old method single
+#
+# # old method multiple
+# # for(i in c(2,4)) {
+# #     GALA_SIP_pheno[, i] = as.factor(GALA_SIP_pheno[, i])
+# #     }
+#
+# # With dplyr - note: just 'factor', not 'as.factor' (though both seem to work)
+# GALA_SIP_pheno <- GALA_SIP_pheno %>%
+#   mutate(across(c(gender, abstinent, kleinerFscore), factor))
+#
+# #Change age GALA_SIP_pheno[,3] and clinical parameters GALA_SIP_pheno[,c(5:23, 26, 28)] to numeric
+# GALA_SIP_pheno <- GALA_SIP_pheno %>%
+#   mutate(across(all_of(names(GALA_SIP_pheno)[c(3,5:26,28)]), as.numeric))
+# # str(GALA_SIP_pheno)
+#
+# # filter for ALD and HP
+# GALA_pheno <- GALA_SIP_pheno %>%
+#     mutate(cohort = sub("[0-9]{1,5}", "", ID)) %>%  # substitute 1-5 numbers with nothing
+#     filter(cohort == "ALD" | cohort == "HP") %>%
+#     mutate(SampleID = ID) %>% # add SampleID column to be able to merge with Olink data
+#     mutate(pt_ID = sub("[A-Z]{2,3}", "", ID)) #remove the 2-3 letters in a new pt_ID column to merge with SIP
+# # str(as.factor(GALA_pheno$cohort)) # check: 2 levels left
+#
+# # Filter SIP samples to be able to include the ppts that are included in GALAXY
+# SIP_pheno <- GALA_SIP_pheno %>%
+#     mutate(cohort = sub("[0-9]{1,5}", "", ID)) %>%
+#     filter(cohort == "SIP") %>%
+#     mutate(pt_ID = sub("[A-Z]{3}", "", ID)) %>% #remove the 3 letters
+#     mutate(SampleID = paste0("ALD", pt_ID))
+#
+# # rbind GALA_pheno with SIP
+# GALA_SIP_pheno2 <- rbind(GALA_pheno, SIP_pheno) # back to 1187 individuals
+# GALA_SIP_pheno2$cohort <- NULL # remove cohort column before merging, to prevent duplicate
+#
+# # match and merge Olink with phenotype data
+# GALA <- merge(GALA_olink, GALA_SIP_pheno2, by = "SampleID") # goes from 49404 to 46276 obs from GALA_olink = 34 ppts
+#
+# # Figuring out which IDs are being dropped:
+# GALA_olink_IDs <- sort(unique(GALA_olink$SampleID)) #537 samples
+# # GALA_pheno_IDs <- sort(unique(GALA_pheno$SampleID)) #458 samples --> SIPHON-ALD samples removed from phenotype data! Fixed by matching ID number between GALA_olink and GALA_pheno for SIP only, but still some phenotypes missing or not matched
+# # GALA_SIP_pheno2_IDs <- sort(unique(GALA_SIP_pheno2$SampleID)) #1181 unique SampleIDs of 1187 samples...?
+# GALA_IDs <- sort(unique(GALA$SampleID)) #503 samples i.e. missing 34 samples from olink
+#
+# # Extract all the differing Sample IDs in the two vectors
+# print(setdiff(GALA_olink_IDs, GALA_IDs))
+# # These 34 are missing from Nanna's phenotype data, maybe because they were not genotyped or failed QC?
+# Probably would have been easier to filter for ALD and HP separately, then match with phenotype data, and then rbind.
 
-str(GALA)
+
 
 # Add column for fibrosis level high or low
 GALA <- GALA %>%
-    mutate(fibrosis = if_else(te < 8, "low", "high"))
-GALA$fibrosis <- as.factor(GALA$fibrosis)
-summary(GALA$fibrosis)
+    mutate(te_fibrosis = if_else(te < 6, "low", "high"))
+GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
+
+# save dataset in data folder
+usethis::use_data(GALA, overwrite = T)
+
+
+# Add outcome data
+# Load outcome data
+# TODO: Change to new QC'ed phenotype dataset
+GALA_outcome <- read_excel(here::here("data-raw/GALA-ALD_outcome_data.xlsx"))
+# str(GALA_outcome) # columns types messed up
+
+# Change id to integer
+GALA_outcome$id <- as.integer(GALA_outcome$id)
+# Change starts_with(days_to) columns to numeric
+GALA_outcome <- GALA_outcome %>%
+  mutate(across(starts_with("days_to"), as.numeric))
+# Change liver-related_event, hospInfection, allMortality, excess_drink_followup columns to factor
+GALA_outcome <- GALA_outcome %>%
+  mutate(across(c(liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor))
+str(GALA_outcome) # check
+
+# Merge GALA with outcome data
+# Create SampleID column in outcome data
+GALA_outcome <- GALA_outcome %>%
+  mutate(SampleID = CBMR_ID)
+# Merge
+GALA_FU <- merge(GALA, GALA_outcome, by = "SampleID") # 34500 obs = 375 individuals -> dropped from 462 in outcome data and 537 in olink data?
+str(GALA_FU)
+GALA_FU_IDs <- sort(unique(GALA_FU$SampleID)) #375 samples
+# Compare the character vectors
+GALA_IDs %in% GALA_FU_IDs
+# TODO: extract the FALSE Sample IDs from the comparison
+GALA %>%
+  filter(SampleID == "ALD2693")
+
+# save dataset in data folder
+usethis::use_data(GALA_FU, overwrite = T)
+
 
 # Graph by Kleiner
+
+# Load dataset
+load(here::here("data/GALA.rda"))
+
 GALA %>%
     filter(!is.na(as.numeric(kleinerFscore))) %>%
     filter(Assay == "IL8") %>%
@@ -234,6 +330,13 @@ GALA %>%
     geom_violin(draw_quantiles = c(0.5)) +
     geom_jitter() +
     ggtitle("IL8")
+
+GALA %>%
+  filter(Assay == "IL8") %>%
+  ggplot(aes(x = kleiner, y = corr_NPX, color = cohort)) +
+  geom_violin(draw_quantiles = c(0.5)) +
+  geom_jitter(position = position_jitterdodge(), size = 0.5) +
+  ggtitle("IL8")
 
 # Graph by TE
 GALA %>%
@@ -246,9 +349,9 @@ GALA %>%
 
 # Graph by dichotomized fibrosis
 GALA %>%
-    filter(!is.na(fibrosis)) %>%
+    filter(!is.na(te_fibrosis)) %>%
     filter(Assay == "IL8") %>%
-    ggplot(aes(x = fibrosis, y = corr_NPX)) +
+    ggplot(aes(x = te_fibrosis, y = corr_NPX)) +
     geom_violin(draw_quantiles = c(0.5)) +
     geom_jitter() +
     ggtitle("IL8")
@@ -386,23 +489,23 @@ olink_boxplot(ALCO,
 # Aim: create heatmap of all 92 cytokines' corr.NPX values against each other
 # Need to have each cytokine in a column
 GALA_heatmap <- pivot_wider(data = GALA,
-                            id_cols = c(SampleID, cohort, bmi, te), # This chooses which columns to keep
+                            id_cols = c(SampleID, cohort, te, te_fibrosis, kleiner, nas_inflam, inflam, bmi, abstinent, overuse, iga, igg, igm, homair, proc3, hospInfection), # This chooses which columns to keep
                             names_from = Assay,
                             values_from = corr_NPX)
 # Results in df with 486 obs (number of participants) and 92 variables + the number of variables added as id_cols = 96
+# Change kleiner and nas_inflam to numeric
+GALA_heatmap <- GALA_heatmap %>%
+  mutate(across(c(kleiner, nas_inflam), as.numeric))
 str(GALA_heatmap) # check
 
-# Change bmi to numeric
-GALA_heatmap$bmi <- as.numeric(GALA_heatmap$bmi)
-# Change cohort to factor
-GALA_heatmap$cohort <- as.factor(GALA_heatmap$cohort)
-
 # Save colnames to be included in heatmap as vector
-all_variables <- names(GALA_heatmap[, 3:ncol(GALA_heatmap)])
+# all_variables <- names(GALA_heatmap[, 3:ncol(GALA_heatmap)])
+# all_numeric_variables <- names(GALA_heatmap[, c(3,5,6,8, 11:15, 17:ncol(GALA_heatmap))])
+all_cytokines <- names(GALA_heatmap[, 17:ncol(GALA_heatmap)])
 # test_variables <- names(GALA_heatmap[, c(5,10,12,16)]) # select a smaller number of variables
 
 # Assign selected variables to the vector "variables", which will be used for correlation matrix and plotting
-variables <- all_variables
+variables <- all_numeric_variables
 
 # Create correlation matrix
 cor_matrix <- round(cor(GALA_heatmap[, variables],
@@ -434,7 +537,38 @@ ggplot(cor_matrix, aes(Var2, Var1)) +
   ylim(variables) + xlim(variables) + # Select variables vector for xlim/ylim, to ensure a nice triangular heatmap
   coord_equal()
 
-# Look at cytokines correlated with te or bmi
+### Graph only certain correlations
+# Extract all correlations with te with value > 0.5
+predictors <- cor_matrix %>% # Requires cor_matrix to include both lower and upper tri
+  filter(Var2 == "te" | Var1 == "te") %>%
+  filter(value > 0.5 | value < -0.5) %>%
+  arrange(desc(value))
+variables2 <- unique(predictors$Var1)
+
+cor_matrix %>%
+  ggplot(aes(Var2, Var1)) +
+  geom_tile(aes(fill=value), color="white") +
+  scale_fill_gradient2(low="blue", high="red", mid="white",
+                       midpoint=0, limit=c(-1,1), name="Correlation\n(Spearman)") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, size=10, hjust=1),
+        axis.text.y = element_text(size=10),
+        axis.title = element_blank()) +
+  ggtitle("Strongest correlations with TE") +
+  ylim(variables2) + xlim(variables2) +
+  coord_equal()
+
+# TODO: use stats result to assign cytokines to be plotted + order by r
+# TODO change plot to piping from cor_matrix, should allow to filter for Var1 == te to only include these correlations.
+# TODO: then  create heatmap for different populations, e.g. low vs high te, ALD vs HP, overuse, hospInfection
+# sign_variables <-
+
+# Extract all correlations with te with value > 0.5
+predictors <- cor_matrix %>% # Requires cor_matrix to include both lower and upper tri
+  filter(value > 0.5 | value < -0.5) %>%
+  arrange(desc(value))
+variables3 <- unique(predictors$Var1)
+
+###at cytokines correlated with te or bmi
 # Create correlation matrix
 cor_matrix <- round(cor(GALA_heatmap[, variables],
                         method = "spearman",
