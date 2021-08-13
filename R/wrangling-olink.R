@@ -8,7 +8,7 @@ source(here::here("R/package-loading.R"))
 olink <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
 
 # Let the wrangling begin!
-# str(olink)
+str(olink)
 
 # Fix issue with TIPS naming
 # replace typo TIEP80EC	--> TIPS80EC
@@ -20,33 +20,23 @@ olink2 <- olink2 %>%
 
 # Add columns for cohort and pt_ID to be able to extract each cohort
 # I have a sampleID column with values in the format "cohort-patientID-timepoint-sampletype" that I ultimately need to break down to 4 separate columns.
-# The cohort is 2-7 UPPERCASE letters, which I believe is written like this "^[A-Z]{2,7}"
-# No separator, then patientID is 1-4 numbers, written like this: "[1-9]{1-4}"
+# The cohort is 2-7 UPPERCASE letters, which is written like this "^[A-Z]{2,7}"
+# No separator, then patientID is 1-4 numbers, written like this: "[0-9]{1,4}"
 # Only some samples have timepoint and sampletype, and they have different patterns depending on the cohort, so I think the easiest will be to first extract cohort and patientID, and then extract the last 2 for each cohort separately.
-#grep selects all rows that have this pattern in the SampleID
-#grep("^[A-Z]{2,7}", olink2$SampleID) # from the beginning, 2-7 uppercase letters for cohort
-#grep("[1-9]{1,4}", olink2$SampleID) # 1-4 numbers for pt_ID
 olink2 <- olink2 %>%
     mutate(cohort = sub("[0-9]{1,4}.*$", "", SampleID)) %>% # substitute 1-4 numbers and everything after this (.*$) with nothing
     mutate(cohort = sub("_.*$", "", cohort)) # substitute anything after a _ with nothing to remove long control names and just keep "CONTROL"
 
-#Keep in mind that * means "match at least 0 times" while + means "match at least 1 time". For some reason the code using .+$ did not replace the single number in the ppts with a single cifre ID.
+# Keep in mind that * means "match at least 0 times" while + means "match at least 1 time". For some reason the code using .+$ did not replace the single number in the ppts with a single cifre ID.
 
 # Transform to factor to check correct number of cohorts
 olink3 <- olink2
 olink3$cohort <- as.factor(olink3$cohort)
-
-str(olink3)
 summary(olink3$cohort) # if transformed to factor for check: 9 different cohorts, including "Bridge" and "CONTROL"
 
-# Mark duplicate samples in a new column
-# olink5 <- olink4 %>%
-#     mutate(duplicate = grep("d.+$", SampleID)) #not working
-### Do this separately for each cohort
-
 # change cytokine names
-# first remove all -
-# then change spaces to _
+# first remove all "-"
+# then change spaces to "_"
 # then rename alpha/beta/gamma to a/b/g
 olink3 <- olink2 %>%
     mutate(Assay = gsub("-", "", Assay)) %>%
@@ -79,9 +69,48 @@ cytokines <- levels(as.factor(olink4$Assay)) # protein abbreviations
 cytokine_IDs <- levels(as.factor(olink4$OlinkID))
 
 
+# Gastric Bypass ----------------------------------------------------------
+# Create columns for pt_ID, time_point, sample_type
+MLGB <- olink4 %>%
+  filter(cohort == "MLGB") %>%
+  mutate(pt_ID = sub("^[A-Z]{4}", "", sub("-.+$", "", SampleID))) %>%
+  mutate(time_point = sub("^.+-", "", SampleID)) %>%
+  mutate(sample_type = sub("^.+[0-9]{1,3}", "", SampleID))
+
+# Remove duplicate sample
+str(as.factor(MLGB$sample_type)) # we can see that the duplicate sample has sample_type "M-d"
+# MLGB %>%
+#     filter(sample_type == "M-d") #92 duplicates (1 sample)
+MLGB <- MLGB %>%
+  filter(sample_type != "M-d") # goes from 14812 to 14720 obs
+
+# remove samples with QC warning
+# MLGB %>%
+#     filter(QC_Warning != "Pass") # 92 obs
+MLGB <- MLGB %>%
+  filter(QC_Warning == "Pass") # goes from 14720 to 14628 obs
+
+# Remove sample_type column
+MLGB$sample_type <- NULL
+
+# Change time_point and pt_ID to factor
+MLGB <- MLGB %>%
+  mutate(across(c(time_point, pt_ID), factor))
+
+# Change order of timepoints
+MLGB$time_point <- ordered(MLGB$time_point, levels = c("BL", "3M", "12M"))
+
+# str(MLGB)
+
+# save dataset in data folder
+usethis::use_data(MLGB, overwrite = T)
+
+# Load dataset
+# load(here::here("data/MLGB.rda"))
+
 # Alcochallenge -----------------------------------------------------------
 
-# Create columns for pt_ID, time_point, sample_type for each cohort
+# Create columns for pt_ID, time_point, sample_type
 ALCO <- olink4 %>%
     filter(cohort == "ALCO") %>%
     mutate(pt_ID = sub("^[A-Z]{2,7}", "", sub("-.+$", "", SampleID))) %>%  # substitute 2-7 letters and anything after a "-" with nothing
