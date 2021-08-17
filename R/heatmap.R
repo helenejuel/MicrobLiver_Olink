@@ -4,19 +4,24 @@ source(here::here("R/package-loading.R"))
 # Heatmap -----------------------------------------------------------------
 
 # Aim: create heatmap of all 92 cytokines' corr.NPX values against each other
-# Need to have each cytokine in a column
+
 # Load data
 load(here::here("data/GALA.rda"))
 
+# Need to have each cytokine in a column
 GALA_heatmap <- pivot_wider(data = GALA,
                             id_cols = c(SampleID, cohort, te_fibrosis, te, kleiner, nas_inflam, nas_steatosis, meld, elf, bmi, iga, igg, igm, alt, ast, ggt, crp, ldl, hdl, trigly, homair, proc3, abstinent, overuse, hospInfection, days_to_hospInf), # This line chooses which columns to keep, in addition to the cytokines
                             names_from = Assay,
                             values_from = corr_NPX)
 # Results in df with 536 obs (number of participants) and 92 variables + the number of variables added as id_cols = 118
-# Change kleiner and nas_inflam to numeric
+# Change kleiner, nas_inflam, nas_steatosis to numeric
 GALA_heatmap <- GALA_heatmap %>%
     mutate(across(c(kleiner, nas_inflam, nas_steatosis), as.numeric))
 str(GALA_heatmap[ , c(1:10)]) # check
+# Save as df
+# GALA_wide <- GALA_heatmap
+# usethis::use_data(GALA_wide, overwrite = T)
+
 
 # Save colnames to be included in heatmap as vector
 # all_variables <- names(GALA_heatmap[, 3:ncol(GALA_heatmap)])
@@ -36,7 +41,7 @@ cor_matrix <- round(cor(GALA_heatmap[, variables],
                         use = "pairwise.complete.obs"),
                     2)
 # Remove duplicate values if you want a correlation triangle
-cor_matrix[lower.tri(cor_matrix)] <- NA
+# cor_matrix[lower.tri(cor_matrix)] <- NA
 
 # Transform to a df with 3 columns: Var1, Var2, value (= correlation R2)
 # library(reshape2)
@@ -47,7 +52,7 @@ cor_matrix$Var1 <- as.character(cor_matrix$Var1)
 cor_matrix$Var2 <- as.character(cor_matrix$Var2)
 
 # Remove NAs (duplicates) if needed
-cor_matrix <- na.omit(cor_matrix)
+# cor_matrix <- na.omit(cor_matrix)
 # str(cor_matrix) # check
 
 # Full heatmap (too many to really see)
