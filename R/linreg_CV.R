@@ -1,6 +1,36 @@
 # Load packages
 source(here::here("R/package-loading.R"))
 
+# Linear prediction models --------------------------------------------------------------
+
+# select all SvD peptides from the CAF group
+orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("CAF")]
+# orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("Alum")]
+# orderedData1 <- JPTdata[t(pdata[,"Vaccine"]) %in% c("CAF", "Alum")]
+# transpose and add neutralisation titres
+orderedData2 <- as.data.frame(cbind(t(orderedData1), pdata[pdata[,"Vaccine"] %in% c("CAF"), "Mean.titre.D126.F"]))
+p1 <- c(paste0(annotation[,"CTH522.peptide.no"], annotation[,"Domain"]), "Neut")
+names(orderedData2) <- p1
+# Find NAs
+sum(is.na(CAF)) #2 NAs - both in Neut titre:
+for(i in names(CAF)) {
+    print(which(is.na(CAF[,i]), arr.ind = T))
+}
+which(is.na(CAF[,6]),arr.ind=T) #none in D126 titre
+sum(is.na(orderedData2)) #no NAs
+
+# Linear regression automatically removes the whole row if there is an NA, so columns with many NAs should be removed, e.g.
+# lindata <- orderedData2[,-20]
+lindata <- orderedData2
+str(lindata)
+
+### Load toolbox
+# setwd('C:/Users/HBJU/Documents/R/R_scripts/02450Toolbox_R') #Should change this to source directly
+source("Tools/source_tools.R")
+path = "Tools/"
+sourceDir(path, exceptions=c("source_tools.R"))
+library(cvTools)
+
 ### Cross-Validation - Linear regression
 # This function takes as input a training and a test set.
 #  1. It fits a linear model on the training set using lm.
