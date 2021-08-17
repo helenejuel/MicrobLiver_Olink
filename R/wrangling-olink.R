@@ -219,6 +219,10 @@ GALA_olink <- GALA_olink %>%
   mutate(SampleID = sub("^HP[0]{1,2}", "HP", SampleID))
 # print(unique(sort(GALA_olink$SampleID)))
 
+# Remove cohort column, so it is not duplicate after merging
+GALA_olink$cohort <- NULL
+
+
 
 ### Load phenotype data
 # TODO: Change to new QC'ed phenotype dataset
@@ -227,7 +231,10 @@ GALA_pheno2 <- read_excel(here::here("data-raw/ALD_HP_outcome_HBJ.xlsx"))
 # Change data columns to factor
 GALA_pheno2 <- GALA_pheno2 %>%
   mutate(across(c(cohort, gender, fibrosis, inflam, abstinent, overuse, alcoholyears, abstinenceyears, liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor)) # consider including kleiner, starts_with("nas")
-# TODO: order factors
+
+# Change order of factors, if needed
+GALA_pheno2$cohort <- ordered(GALA_pheno2$cohort, levels = c("HP", "ALD"))
+
 
 # Change data columns to numeric
 GALA_pheno2 <- GALA_pheno2 %>%
@@ -237,13 +244,23 @@ GALA_pheno2 <- GALA_pheno2 %>%
 GALA_pheno2 <- GALA_pheno2 %>%
   rename(SampleID = CBMR_ID)
 
-str(GALA_pheno2)
+# str(GALA_pheno2)
 
-# Match and merge Olink with phenotype data
+
+### Match and merge Olink with phenotype data
 GALA <- merge(GALA_olink, GALA_pheno2, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
 # Find missing sample
-print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
+# print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
 # TODO: include phenotypes for ALD1302
+
+# Add column for fibrosis level high or low
+GALA <- GALA %>%
+  mutate(te_fibrosis = if_else(te < 6, "low", "high"))
+GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
+
+# save dataset in data folder
+usethis::use_data(GALA, overwrite = T)
+
 
 ### If using Nanna's phenotype dataset instead
 # GALA_SIP_pheno <- read_excel(here::here("data-raw/ALD_HP_SIP_phenotypes.xlsx"), sheet = "small") #39 variables
@@ -303,45 +320,35 @@ print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
 # Probably would have been easier to filter for ALD and HP separately, then match with phenotype data, and then rbind.
 
 
-
-# Add column for fibrosis level high or low
-GALA <- GALA %>%
-    mutate(te_fibrosis = if_else(te < 6, "low", "high"))
-GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
-
-# save dataset in data folder
-usethis::use_data(GALA, overwrite = T)
-
-
-# Add outcome data
-# Load outcome data
-# TODO: Change to new QC'ed phenotype dataset
-GALA_outcome <- read_excel(here::here("data-raw/GALA-ALD_outcome_data.xlsx"))
-# str(GALA_outcome) # columns types messed up
-
-# Change id to integer
-GALA_outcome$id <- as.integer(GALA_outcome$id)
-# Change starts_with(days_to) columns to numeric
-GALA_outcome <- GALA_outcome %>%
-  mutate(across(starts_with("days_to"), as.numeric))
-# Change liver-related_event, hospInfection, allMortality, excess_drink_followup columns to factor
-GALA_outcome <- GALA_outcome %>%
-  mutate(across(c(liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor))
-str(GALA_outcome) # check
-
-# Merge GALA with outcome data
-# Create SampleID column in outcome data
-GALA_outcome <- GALA_outcome %>%
-  mutate(SampleID = CBMR_ID)
-# Merge
-GALA_FU <- merge(GALA, GALA_outcome, by = "SampleID") # 34500 obs = 375 individuals -> dropped from 462 in outcome data and 537 in olink data?
-str(GALA_FU)
-GALA_FU_IDs <- sort(unique(GALA_FU$SampleID)) #375 samples
-# Compare the character vectors
-GALA_IDs %in% GALA_FU_IDs
-# TODO: extract the FALSE Sample IDs from the comparison
-GALA %>%
-  filter(SampleID == "ALD2693")
-
-# save dataset in data folder
-usethis::use_data(GALA_FU, overwrite = T)
+### Add outcome data if using dataset without outcome data
+# # Load outcome data
+# # TODO: Change to new QC'ed phenotype dataset
+# GALA_outcome <- read_excel(here::here("data-raw/GALA-ALD_outcome_data.xlsx"))
+# # str(GALA_outcome) # columns types messed up
+#
+# # Change id to integer
+# GALA_outcome$id <- as.integer(GALA_outcome$id)
+# # Change starts_with(days_to) columns to numeric
+# GALA_outcome <- GALA_outcome %>%
+#   mutate(across(starts_with("days_to"), as.numeric))
+# # Change liver-related_event, hospInfection, allMortality, excess_drink_followup columns to factor
+# GALA_outcome <- GALA_outcome %>%
+#   mutate(across(c(liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor))
+# str(GALA_outcome) # check
+#
+# # Merge GALA with outcome data
+# # Create SampleID column in outcome data
+# GALA_outcome <- GALA_outcome %>%
+#   mutate(SampleID = CBMR_ID)
+# # Merge
+# GALA_FU <- merge(GALA, GALA_outcome, by = "SampleID") # 34500 obs = 375 individuals -> dropped from 462 in outcome data and 537 in olink data?
+# str(GALA_FU)
+# GALA_FU_IDs <- sort(unique(GALA_FU$SampleID)) #375 samples
+# # Compare the character vectors
+# GALA_IDs %in% GALA_FU_IDs
+# # TODO: extract the FALSE Sample IDs from the comparison
+# GALA %>%
+#   filter(SampleID == "ALD2693")
+#
+# # save dataset in data folder
+# usethis::use_data(GALA_FU, overwrite = T)
