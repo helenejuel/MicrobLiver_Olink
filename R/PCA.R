@@ -8,14 +8,90 @@ load(here::here("data/GALA_wide.rda"))
 str(GALA_wide)
 
 # PCA_exclude <- which(is.na(Norm.test)) # to remove problematic columns, e.g. all values are identical or not numeric
-PCA_exclude <- c(1:3, 23:25)# to remove ID, cohort, categorical variables
+# PCA_exclude <- c(1:3, 23:25)# to remove ID, cohort, categorical variables
 PCA_exclude <- c(1:26) # to remove all except cytokines
 
 # t(names(GALA_wide)) # to see column name numbers
 
 PCA_data <- GALA_wide[, -PCA_exclude] #All numerical attributes
+str(PCA_data) # check
+
+# Save the untransformed PCA data, to be able to use the PCA_data as object name in the script without having to change it all the way
+PCA_data_UT <- PCA_data
+
+# Need to check that all columns have normal distribution, as PCA assumes normally distributed data in each column.
+# Check: http://www.sthda.com/english/wiki/normality-test-in-r
+# One method is to visualise data with histograms or qq-plots
+PCA_data %>%
+    ggplot(aes(IL10RB)) +
+    geom_density()
+# hist(PCA_data$IL10RB) # for baseR plot
+PCA_data %>%
+    ggplot(aes(sample = IL10RB)) +
+    stat_qq() + stat_qq_line()
+# qqline(PCA_data$IL10RB) # for baseR plot
+
+# Another method is to use a normality test, like Shapiro-Wilk's. Note that small n will often pass this test, in which case it is important to perform a visual inspection as well.
+shapiro.test(PCA_data$IL10RB) # If p>0.05, data are not significantly different from a normal distribution
+
+# Plot qq plots of all cytokines
+qq_data <- pivot_longer(PCA_data, cols = c(1:ncol(PCA_data)), names_to = "Assay")
+# ggplot(qq_data, aes(x = value)) +
+#     geom_density() +
+#     facet_wrap(vars(Assay), nrow = 8) #looks a little weird?
+ggplot(qq_data, aes(sample = value)) +
+    stat_qq() + stat_qq_line() +
+    facet_wrap(vars(Assay), nrow = 8)
+ggsave(here::here("doc/images/all_cyto_qq.pdf"), height = 12, width = 14)
+
+
+
+# Apply Shapiro test to all 92 cytokines
+# save the Shapiro test in a list of lists, with a list for each cytokine
+shapiro <- apply(PCA_data, 2, shapiro.test)
+# shapiro <- apply(PCA_data_log, 2, shapiro.test)
+shapiro <- apply(PCA_data_INT, 2, shapiro.test)
+# extract p values from this list of lists using do.call
+shapiro_p <- as.data.frame(do.call(rbind, lapply(shapiro, function(v){v$p.value})))
+# add column with cytokine names
+shapiro_p <- shapiro_p %>%
+    mutate(Assay = cytokines)
+# Extract cytokines with p.value <0.5
+non_normal <- shapiro_p %>%
+    filter(V1 < 0.05)
+non_normal # view
+
+
+
+# Since 87 of the 92 cytokines were not normally distributed, I will apply log10 transformation and run the shapiro test again
+PCA_data_log <- log10(PCA_data[, c(1:ncol(PCA_data))])
+
+# Still 81 cytokines are not normally distributed
+# I will try to apply inverse normal transformation instead
+# Test on a single column
+# IL10B_INT <- qnorm((rank(PCA_data$IL10RB, na.last = "keep") - 0.5) / sum(!is.na(PCA_data$IL10RB)))
+# hist(IL10B_INT) # seems to work
+# hist(PCA_data$IL13)
+# hist(qnorm((rank(PCA_data$IL13, na.last = "keep") - 0.5) / sum(!is.na(PCA_data$IL13)))) # however, does not seem to perform too well with the cytokines with many measurements below LoD
+
+PCA_data_INT <- PCA_data
+for(i in c(1:ncol(PCA_data))) {
+    PCA_data_INT[, i] <- qnorm((rank(PCA_data[, i], na.last = "keep") - 0.5) / sum(!is.na(PCA_data[, i])))
+} # Also seems to work
+# Now only 33 are not normally distributed - seems to be those with many values below LoD
+
+# Will remove these 33 cytokines for now
+# Run shapiro test and filter away those cytokines that end in the non_normal$Assay column
+PCA_data_INT_clean <- PCA_data_INT[, setdiff(names(PCA_data_INT), non_normal$Assay)]
+summary(PCA_data_INT_clean) # 59 cytokines remain - means are already 0
+sd(PCA_data_INT_clean$IL10RB) # and sd is ~1
+# So no need to standardize the data before PCA
+
 
 ### Standardization
+# Choose the dataset to be used in the PCA
+PCA_data <- PCA_data_UT
+
 means <- colMeans(PCA_data, na.rm = T) # find means
 datzeromean <- t(apply(PCA_data, 1, '-', means)) #subtract means from all values
 # colMeans(datzeromean, na.rm = T) # Check: colmeans should now be ~0
@@ -48,6 +124,8 @@ if(length(which(All.identical.test == 1)) == 0) {
     }
 
 # Use prcomp on the standardized corrected data
+# Assign the INT_clean data directly
+standard.corrected.data <- PCA_data_INT_clean
 pca.data <- prcomp(standard.corrected.data, center = F, scale. = F) # center and scale already performed manually
 summary(pca.data) # to view cumulative proportion of variance explained
 pca.data # to view all principal component directions
@@ -55,9 +133,9 @@ PC.Directions <- as.data.frame(pca.data$rotation)
 PC.Directions[, 1:4] %>%
     arrange(desc(PC1)) #view weights of first 4 PCs
 # library(openxlsx)
-write.xlsx(pca.data, file="GALA_cytokines_PCAdirections.xlsx", row.names = F)
+# write.xlsx(pca.data, file="GALA_cytokines_PCAdirections.xlsx", row.names = F)
 
-qplot(x = 1:dim(PCA_data)[2],
+qplot(x = 1:dim(standard.corrected.data)[2],
       y = summary(pca.data)$importance[3,],
       ylab = "Cumulative variance",
       xlab = "Number of PCs included",
@@ -67,20 +145,22 @@ qplot(x = 1:dim(PCA_data)[2],
 qplot(PC1, PC2, data=as.data.frame(pca.data$x))
 
 # Add phenotypes to be able to add labels and colors to the plot
-id <- 1:dim(PCA_data)[1]
 id <- GALA_wide[, 1]
 endpoints <- GALA_wide[, c(3:7, 23:25)] # categorical endpoints te_fibrosis, abstinent, overuse, hospInf, te, kleiner, nas_inflam, nas_steatosis are numerical endpoints
-str(endpoints)
+# str(endpoints) # check
 plot.pca <- data.frame(pca.data$x, id, endpoints)
 
 
 # color points according to categorical endpoint
+plot.pca$te_fibrosis
 plot.pca %>%
-    ggplot(aes(PC1, PC3)) + # try different combinations of PCs
-    geom_point(aes(color = te_fibrosis), size = 2) +
+    na.omit(te_fibrosis) %>%
+    ggplot(aes(PC1, PC3, color = te_fibrosis)) + # try different combinations of PCs
+    geom_point(size = 2) +
     # geom_point(aes(color = hospInfection), size = 2)
     # geom_point(aes(color = overuse), size = 2)
-    geom_ellipse(aes(color = te_fibrosis)) # TODO: find correct geom_
+    geom_density2d()
+# TODO: replace geom_density with simple ellipses
 
 # color points according to continuous endpoint
 plot.pca %>%
