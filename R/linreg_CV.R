@@ -36,15 +36,15 @@ library(cvTools)
 #  1. It fits a linear model on the training set using lm.
 #  2. It estimates the output of the test set using predict.
 #  3. It computes the sum of squared errors.
-funLinreg <- function(X_train, y_train, X_test, y_test){
+funLinreg <- function(X_train, y_train, X_test, y_test) {
     Xr <- data.frame(X_train)
     Xtest <- data.frame(X_test)
-    if(dim(as.matrix(X_train))[2]!=0){
+    if(dim(as.matrix(X_train))[2]!=0) {
         xnam <- paste("X", 1:dim(as.matrix(X_train))[2], sep="")
         colnames(Xr) <- xnam
         colnames(Xtest) <- xnam
         (fmla <- as.formula(paste("y_train ~ ", paste(xnam, collapse= "+"))))
-    }else{
+    } else {
         xnam <- 1
         (fmla <- as.formula(paste("y_train ~ ", paste(xnam, collapse= "+"))))
     }
@@ -83,7 +83,7 @@ Cost.threshold <- 0.01
 # Start the clock!
 ptm <- proc.time()
 
-# For each crossvalidation fold
+# For each cross-validation fold
 for(k in 1:K){
     cat('Crossvalidation fold ', k, '/',K,"\n")
 
