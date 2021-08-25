@@ -199,6 +199,13 @@ GALA_olink <- olink4 %>%
     mutate(sample_type = sub("^.+[0-9]{1,3}", "", SampleID)) # duplicate samples are marked as "-d"
 # str(as.factor(GALA_olink$sample_type)) # check we have the duplicate samples as "-d"
 
+# Count
+olink4 %>%
+  filter(cohort == "ALD") #38,364 rows /92 = 417 samples
+olink4 %>%
+  filter(cohort == "HP") #12,328 /92 = 134 samples
+
+
 # Remove duplicate samples
 GALA_olink <- GALA_olink %>%
     filter(sample_type != "-d")  # goes from 50692 to 50416 obs = 276 duplicates (3 samples)
@@ -240,23 +247,40 @@ GALA_pheno2$cohort <- ordered(GALA_pheno2$cohort, levels = c("HP", "ALD"))
 GALA_pheno2 <- GALA_pheno2 %>%
   mutate(across(c(cpa, meld, elf, te, packyears, height, weight, bmi, waist, hip, whr, hr, map, sbp, dbp, alt, ast, alk, bili, chol, crp, ggt, glc, hba1c, hdl, iga, igg, igm, ldl, leu, trigly, insulin, homair, cpeptid, proc3, days_to_LRE, days_to_hospInf, days_to_mort), as.numeric))
 
+# Assign 2x max(days_to_hospInf) to ppts who do not have hospInf and did not die
+#TODO
+
 # Change column name from CBMR_ID to SampleID to allow merging with olink data
 GALA_pheno2 <- GALA_pheno2 %>%
   rename(SampleID = CBMR_ID)
+
+# Add column for fibrosis level high or low
+GALA_pheno2 <- GALA_pheno2 %>%
+  mutate(te_fibrosis = if_else(te < 6, "low", "high"))
+GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
 
 # str(GALA_pheno2)
 
 
 ### Match and merge Olink with phenotype data
-GALA <- merge(GALA_olink, GALA_pheno2, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
+GALA0 <- merge(GALA_olink, GALA_pheno2, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
 # Find missing sample
 # print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
 # TODO: include phenotypes for ALD1302
 
-# Add column for fibrosis level high or low
-GALA <- GALA %>%
-  mutate(te_fibrosis = if_else(te < 6, "low", "high"))
-GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
+# Add PRS and SNP data
+ALD_gen <- read_excel(here::here("data-raw/genALD_HBJ.xlsx"), sheet = "combined") #489 obs
+HP_gen <- read_excel(here::here("data-raw/genHP_HBJ.xlsx"), sheet = "combined") #136 obs
+GALA_gen <- rbind(ALD_gen, HP_gen) #625 obs
+# Change column name from CBMR_ID to SampleID to allow merging with olink data
+GALA_gen <- GALA_gen %>%
+  rename(SampleID = CBMR_ID)
+# Merge with GALA Olink + phenotype data
+GALA <- merge(GALA0, GALA_gen, by = "SampleID") # goes from 49312 to 48852 obs from GALA0 = 5 ppts
+print(setdiff(unique(GALA0$SampleID), GALA_gen$SampleID)) # ALD2265, ALD2332, ALD2547, ALD2558, ALD402
+# TODO: investigate why we are missing genotypes for these 5
+
+# str(GALA[,c(74:108)]) # check
 
 # save dataset in data folder
 usethis::use_data(GALA, overwrite = T)
