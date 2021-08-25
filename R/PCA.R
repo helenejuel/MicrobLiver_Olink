@@ -130,16 +130,20 @@ pca.data <- prcomp(standard.corrected.data, center = F, scale. = F) # center and
 summary(pca.data) # to view cumulative proportion of variance explained
 pca.data # to view all principal component directions
 PC.Directions <- as.data.frame(pca.data$rotation)
-PC.Directions[, 1:4] %>%
-    arrange(desc(PC1)) #view weights of first 4 PCs
+#view weights of first 3 PCs
+PC.Directions[, 1:3] %>% arrange(desc(PC1))
+PC.Directions[, 1:3] %>% arrange(desc(PC3))
 # library(openxlsx)
-# write.xlsx(pca.data, file="GALA_cytokines_PCAdirections.xlsx", row.names = F)
+write.xlsx(pca.data, file="GALA_cytokines_PCAdirections.xlsx", row.names = T)
 
 qplot(x = 1:dim(standard.corrected.data)[2],
       y = summary(pca.data)$importance[3,],
+      ymin = 0,
       ylab = "Cumulative variance",
       xlab = "Number of PCs included",
       main = "PCA cytokines")
+
+
 
 # Plot first two principal components
 qplot(PC1, PC2, data=as.data.frame(pca.data$x))
@@ -147,38 +151,55 @@ qplot(PC1, PC2, data=as.data.frame(pca.data$x))
 # Add phenotypes to be able to add labels and colors to the plot
 id <- GALA_wide[, 1]
 endpoints <- GALA_wide[, c(3:7, 23:25)] # categorical endpoints te_fibrosis, abstinent, overuse, hospInf, te, kleiner, nas_inflam, nas_steatosis are numerical endpoints
-# str(endpoints) # check
+str(endpoints) # check
 plot.pca <- data.frame(pca.data$x, id, endpoints)
 
 
 # color points according to categorical endpoint
-plot.pca$te_fibrosis
+plot.pca$abstinent
 plot.pca %>%
-    na.omit(te_fibrosis) %>%
-    ggplot(aes(PC1, PC3, color = te_fibrosis)) + # try different combinations of PCs
+    # na.omit(te_fibrosis) %>%
+    filter(hospInfection != "NA") %>%
+    ggplot(aes(PC1, PC3, color = hospInfection)) + # try different combinations of PCs, and using different categorical phenotypes for coloring
     geom_point(size = 2) +
-    # geom_point(aes(color = hospInfection), size = 2)
-    # geom_point(aes(color = overuse), size = 2)
-    geom_density2d()
-# TODO: replace geom_density with simple ellipses
+    geom_abline(slope = 0.23, intercept = -0.9) +
+    stat_ellipse()
+    # geom_density2d()
+# te_fibrosis = PC1 higher, no diff PC2, lower PC3
+ggsave(here::here("doc/images/PCA1_PCA3_hospInf_abline.jpg"), height = 4, width = 5)
+# abstinent, overuse = total overlap
+# hospInf = PC1 higher, no diff in PC2,3
 
 # color points according to continuous endpoint
 plot.pca %>%
+    # na.omit(kleiner) %>%
     ggplot(aes(PC1, PC3)) +
-    geom_point(aes(color = te), size = 2) +
+    geom_point(aes(color = nas_inflam), size = 2) + # te, kleiner, nas_inflam, nas_steatosis
     scale_color_gradient(low = "blue", high = "red")
 
 # facet_wrap on categorical endpoint
 plot.pca %>%
-    # na.omit(abstinent) %>% # omitting all with NA in abstinent, except the 2 with high fibrosis?!?
-    ggplot(aes(PC1, PC3)) +
-    geom_point(aes(color = te_fibrosis), size = 2) +
-    # facet_wrap("abstinent") +
-    # facet_wrap("overuse") +
-    facet_wrap("hospInfection") +
-    ggtitle("Infection requiring hospitalisation during follow-up")
-    # ggtitle("Overuse")
-    # ggtitle("Abstinent")
+    # filter(abstinent != "NA") %>%
+    na.omit(te_fibrosis) %>%
+    ggplot(aes(PC1, PC3, color = hospInfection)) +
+    geom_point(size = 2) +
+    # facet_wrap("hospInfection") +
+    facet_wrap("overuse") +
+    # ggtitle("Infection requiring hospitalisation during follow-up") +
+    # ggtitle("Fibrosis level") +
+    # stat_ellipse() +
+    geom_abline(slope = 0.15, intercept = -0.6)
+
+# facet_grid on 2 categorical endpoints
+plot.pca %>%
+    filter(overuse != "NA") %>%
+    na.omit(te_fibrosis) %>%
+    ggplot(aes(PC1, PC3, color = hospInfection)) +
+    geom_point(size = 2) +
+    facet_grid(vars(rows = overuse), vars(cols = te_fibrosis)) +
+    ggtitle("Infection requiring hospitalisation, fibrosis level, and overuse status") +
+    geom_abline(slope = 0.23, intercept = -0.9)
+# ggsave(here::here("doc/images/PCA1_PCA3_3discrete.jpg"), height = 6, width = 7)
 
 
 # Show 2 endpoints
