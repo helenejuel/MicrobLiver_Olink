@@ -76,12 +76,12 @@ for(i in cytokines[1:92]) {
         geom_boxplot() +
         ggtitle(paste(i))
 
-    plotlist[[i]] <- ploti
+    allcytokines_subgroup[[i]] <- ploti
     # print(plot1)
 }
 
 pdf(here::here("doc/images/ALCO_allcytokines.pdf"), height = 60, width = 40) # height = 5 for each row of 8 -> 60 for 12x8
-do.call('grid.arrange', c(plotlist, ncol=8))
+do.call('grid.arrange', c(allcytokines_subgroup, ncol=8))
 dev.off()
 
 
@@ -105,12 +105,12 @@ for(i in sign_cytokines[1:51]) {
         geom_violin() +
         ggtitle(paste(i))
 
-    plotlist2[[i]] <- ploti
+    signcytokines_subgroup[[i]] <- ploti
     # print(plot1)
 }
 
 pdf(here::here("doc/images/ALCO_sign_cytokines_subgroup.pdf"), height = 35, width = 40) # height = 5 for each row of 8 -> 35 for 7x8
-do.call('grid.arrange', c(plotlist2, ncol=8))
+do.call('grid.arrange', c(signcytokines_subgroup, ncol=8))
 dev.off()
 
 
@@ -146,7 +146,45 @@ ALCO %>%
     geom_jitter() +
     ggtitle("IL8_baseline")
 
-# Plot using Olink package
+### Top hits for GALA
+GALA %>%
+    # filter(!is.na(as.numeric(kleiner))) %>%
+    filter(Assay == "HGF") %>%
+    ggplot(aes(x = kleiner, y = corr_NPX)) +
+    geom_violin(draw_quantiles = c(0.5)) +
+    geom_jitter() +
+    ggtitle("HGF")
+ggsave(here::here("doc/images/HGF_kleiner.jpg"), height = 4, width = 5)
+
+GALA %>%
+    # filter(!is.na(as.numeric(kleiner))) %>%
+    filter(Assay == "IL8") %>%
+    ggplot(aes(x = kleiner, y = corr_NPX)) +
+    geom_violin(draw_quantiles = c(0.5)) +
+    geom_jitter() +
+    ggtitle("IL8")
+ggsave(here::here("doc/images/IL8_kleiner.jpg"), height = 4, width = 5)
+
+GALA %>%
+    filter(Assay == "HGF") %>%
+    ggplot(aes(x = as.numeric(te), y = corr_NPX)) +
+    geom_point(aes(color = cohort)) +
+    geom_smooth(method = lm, color = "black") +
+    scale_x_log10() +
+    ggtitle("HGF")
+ggsave(here::here("doc/images/HGF_te.jpg"), height = 4, width = 5)
+
+GALA %>%
+    filter(Assay == "IL8") %>%
+    ggplot(aes(x = as.numeric(te), y = corr_NPX)) +
+    geom_point(aes(color = cohort)) +
+    geom_smooth(method = lm, color = "black") +
+    scale_x_log10() +
+    ggtitle("IL8")
+ggsave(here::here("doc/images/IL8_te.jpg"), height = 4, width = 5)
+
+
+### Plot using Olink package
 # plot all cytokines
 #ALCO_subgroup_1 <-
 olink_boxplot(ALCO,
