@@ -10,17 +10,31 @@ load(here::here("data/GALA.rda"))
 
 # Need to have each cytokine in a column
 GALA_heatmap <- pivot_wider(data = GALA,
-                            id_cols = c(SampleID, cohort, te_fibrosis, te, kleiner, nas_inflam, nas_steatosis, meld, elf, bmi, iga, igg, igm, alt, ast, ggt, crp, ldl, hdl, trigly, homair, proc3, abstinent, overuse, hospInfection, days_to_hospInf), # This line chooses which columns to keep, in addition to the cytokines
+                            id_cols = c(SampleID, cohort, age, gender,
+                                        kleiner, fibrosis, nas_inflam, nas_steatosis, te_fibrosis_6, te_fibrosis_8, inflam, steatosis_binary,  # liver parameters as factors
+                                        te, kleiner_numeric, inflam_numeric, steatosis_numeric, elf, # numeric liver parameters
+                                        bmi, hr, map, # clinical numerical variables
+                                        iga, igg, igm, # immunoglobulins (numeric)
+                                        alt, ast, ggt, # liver enzymes (numeric)
+                                        crp, # C-reactive protein (numeric)
+                                        ldl, hdl, trigly, # serum lipids (numeric)
+                                        homair, # insulin resistance (numeric)
+                                        proc3, # numeric
+                                        abstinent, overuse, excess_drink_followup, # factors
+                                        hospInfection, liverrelated_event, allMortality, any_event_tot, # events during followup (factor)
+                                        days_to_hospInf2, days_to_LRE2, days_to_mort2, # numeric, NAs carried over and "no" = 2xmax
+                                        hospInf_1yr, LRE_1yr, mort_1yr, any_event_1yr, # events during 1st year (factor)
+                                        LYPLAL1, MARC1, ERLIN1, GPAM, SERPINA1, APOH, TM6SF2, APOC1, MBOAT7, GCKR, PNPLA3, PPARG, HSD17B13, MTTP, SLC39A8, TRIB1, AKNA, # SNPs (numeric)
+                                        PRS_alcohol, PRS_BMI, PRS_CAD, PRS_CHD, PRS_CRP, PRS_GGT, PRS_HDL, PRS_height, PRS_IBD, PRS_IL6, PRS_LDL, PRS_ALT, PRS_risk, PRS_stroke, PRS_T2D, PRS_TC, PRS_TG), # PRSs (numeric)
+                            # id_cols chooses which columns to keep, in addition to the cytokines
                             names_from = Assay,
-                            values_from = corr_NPX)
-# Results in df with 536 obs (number of participants) and 92 variables + the number of variables added as id_cols = 118
-# Change kleiner, nas_inflam, nas_steatosis to numeric
-GALA_heatmap <- GALA_heatmap %>%
-    mutate(across(c(kleiner, nas_inflam, nas_steatosis), as.numeric))
+                            values_from = NPX)
+# Results in df with 531 obs (number of participants) and 92 variables + the number of variables added as id_cols = 172
+
 str(GALA_heatmap[ , c(1:10)]) # check
 # Save as df
 # GALA_wide <- GALA_heatmap
-# usethis::use_data(GALA_wide, overwrite = T)
+# usethis::use_data(GALA_wide, overwrite = T) #not run since Aug 17
 
 
 # Save colnames to be included in heatmap as vector
