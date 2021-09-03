@@ -191,99 +191,20 @@ TIPS <- olink4 %>%
 
 # GALA --------------------------------------------------------------------
 
-### Load olink dataset
+### Load olink dataset, phenotype data, and genetic data and merge - code in Rmd
+# Olink data
 load(here::here("data/olink4.rda"))
+# Phenotype data
+# GALA_pheno <- read_excel(here::here("data-raw/ALD_HP_outcome_HBJ.xlsx"))
+load(here::here("data/GALA_pheno3.rda"))
 
-GALA_olink <- olink4 %>%
-    filter(cohort == "ALD" | cohort == "HP") %>% #50692 obs = 551 samples
-    mutate(sample_type = sub("^.+[0-9]{1,3}", "", SampleID)) # duplicate samples are marked as "-d"
-# str(as.factor(GALA_olink$sample_type)) # check we have the duplicate samples as "-d"
+# PRS and SNP data
+# ALD_gen <- read_excel(here::here("data-raw/genALD_HBJ.xlsx"), sheet = "combined") #489 obs
+# HP_gen <- read_excel(here::here("data-raw/genHP_HBJ.xlsx"), sheet = "combined") #136 obs
+load(here::here("data/GALA_gen.rda"))
 
-# Count
-olink4 %>%
-  filter(cohort == "ALD") #38,364 rows /92 = 417 samples
-olink4 %>%
-  filter(cohort == "HP") #12,328 /92 = 134 samples
-
-
-# Remove duplicate samples
-GALA_olink <- GALA_olink %>%
-    filter(sample_type != "-d")  # goes from 50692 to 50416 obs = 276 duplicates (3 samples)
-
-GALA_olink$sample_type <- NULL # remove sample_type column
-
-# Assess samples with QC warning
-# fail <- GALA_olink %>%
-#     filter(QC_Warning != "Pass") # 1012 obs (12 samples)
-# unique(fail$SampleID)
-
-# remove samples with QC warning
-GALA_olink <- GALA_olink %>%
-    filter(QC_Warning == "Pass") # goes from 50416 to 49404 obs
-
-# Remove extra 0's in SampleID HP004-HP096
-GALA_olink <- GALA_olink %>%
-  mutate(SampleID = sub("^HP[0]{1,2}", "HP", SampleID))
-# print(unique(sort(GALA_olink$SampleID)))
-
-# Remove cohort column, so it is not duplicate after merging
-GALA_olink$cohort <- NULL
-
-
-
-### Load phenotype data
-# TODO: Change to new QC'ed phenotype dataset
-GALA_pheno2 <- read_excel(here::here("data-raw/ALD_HP_outcome_HBJ.xlsx"))
-
-# Change data columns to factor
-GALA_pheno2 <- GALA_pheno2 %>%
-  mutate(across(c(cohort, gender, fibrosis, inflam, abstinent, overuse, alcoholyears, abstinenceyears, liverrelated_event, hospInfection, allMortality, excess_drink_followup), factor)) # consider including kleiner, starts_with("nas")
-
-# Change order of factors, if needed
-GALA_pheno2$cohort <- ordered(GALA_pheno2$cohort, levels = c("HP", "ALD"))
-
-
-# Change data columns to numeric
-GALA_pheno2 <- GALA_pheno2 %>%
-  mutate(across(c(cpa, meld, elf, te, packyears, height, weight, bmi, waist, hip, whr, hr, map, sbp, dbp, alt, ast, alk, bili, chol, crp, ggt, glc, hba1c, hdl, iga, igg, igm, ldl, leu, trigly, insulin, homair, cpeptid, proc3, days_to_LRE, days_to_hospInf, days_to_mort), as.numeric))
-
-# Assign 2x max(days_to_hospInf) to ppts who do not have hospInf and did not die
-#TODO
-
-# Change column name from CBMR_ID to SampleID to allow merging with olink data
-GALA_pheno2 <- GALA_pheno2 %>%
-  rename(SampleID = CBMR_ID)
-
-# Add column for fibrosis level high or low
-GALA_pheno2 <- GALA_pheno2 %>%
-  mutate(te_fibrosis = if_else(te < 6, "low", "high"))
-GALA$te_fibrosis <- as.factor(GALA$te_fibrosis)
-
-# str(GALA_pheno2)
-
-
-### Match and merge Olink with phenotype data
-GALA0 <- merge(GALA_olink, GALA_pheno2, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
-# Find missing sample
-# print(setdiff(unique(GALA_olink$SampleID), GALA_pheno2$SampleID)) # ALD1302
-# TODO: include phenotypes for ALD1302
-
-# Add PRS and SNP data
-ALD_gen <- read_excel(here::here("data-raw/genALD_HBJ.xlsx"), sheet = "combined") #489 obs
-HP_gen <- read_excel(here::here("data-raw/genHP_HBJ.xlsx"), sheet = "combined") #136 obs
-GALA_gen <- rbind(ALD_gen, HP_gen) #625 obs
-# Change column name from CBMR_ID to SampleID to allow merging with olink data
-GALA_gen <- GALA_gen %>%
-  rename(SampleID = CBMR_ID)
-# Merge with GALA Olink + phenotype data
-GALA <- merge(GALA0, GALA_gen, by = "SampleID") # goes from 49312 to 48852 obs from GALA0 = 5 ppts
-print(setdiff(unique(GALA0$SampleID), GALA_gen$SampleID)) # ALD2265, ALD2332, ALD2547, ALD2558, ALD402
-# TODO: investigate why we are missing genotypes for these 5
-
-# str(GALA[,c(74:108)]) # check
-
-# save dataset in data folder
-usethis::use_data(GALA, overwrite = T)
+# merged dataset
+load(here::here("data/GALA.rda"))
 
 
 ### If using Nanna's phenotype dataset instead
