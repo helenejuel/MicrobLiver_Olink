@@ -168,6 +168,9 @@ TODO: add phenotype data for ALD1302
 
 ## Add genotype SNP and PRS datasets
 Can be skipped if merged dataset "GALA" loaded directly.
+
+## Load genetic data
+Can be skipped if merged dataset "GALA" loaded directly.
 ```{r phenotype2}
 # Add PRS and SNP data
 ALD_gen <- read_excel(here::here("data-raw/genALD_HBJ.xlsx"), sheet = "combined") #489 obs
@@ -190,11 +193,12 @@ print(setdiff(unique(GALA0$SampleID), GALA_gen$SampleID)) # ALD2265, ALD2332, AL
 # str(GALA[,c(74:108)]) # check
 
 # save dataset in data folder
-usethis::use_data(GALA, overwrite = T)
+# usethis::use_data(GALA, overwrite = T)
 ```
 TODO: investigate why we are missing genotypes for these 5
 
 ## Load merged dataset
+If not loading and merging individual datasets
 ```{r load_merged}
 # Load dataset if not running the loading and merging chunks above
 load(here::here("data/GALA.rda"))
@@ -246,15 +250,15 @@ anova_GALA_kleiner <- olink_anova(GALA, variable = "kleiner")
 
 # Extract list of significant cytokines
 sign_cytokines <- anova_GALA_kleiner %>%
-    filter(Adjusted_pval < 0.05/92) %>% # Bonferroni = 92 tests
+    filter(Adjusted_pval < 0.05) %>% # Bonferroni = 92 tests, however adjusted pval already adjusted with Benjamini-Hochberg
     pull(Assay)
 print(sign_cytokines)
 ```
-72 of the 92 cytokines have p<0.05 after Bonferroni correction for multiple testing.
+84 of the 92 cytokines have p<0.05 after Benjamini-Hochberg correction for multiple testing.
 
 ## Plot significant cytokines (Kleiner)
-Not included in current knit (include=FALSE).
-```{r plot_sign_kleiner, warning=FALSE, include=FALSE}
+Not included in current knit if include=FALSE.
+```{r plot_sign_kleiner, warning=FALSE}
 # Prepare list for graphs
 signcytokines_kleiner <- list()
 
@@ -264,8 +268,8 @@ for(i in sign_cytokines[1:72]) {
         filter(Assay == i) %>%
         ggplot(aes(x = kleiner, y = NPX, color = cohort)) +
         geom_violin(draw_quantiles = c(0.5)) +
-        # geom_jitter(position = position_jitterdodge(), size = 0.5) + # jitterdodge is throwing an error, investigate!
-        geom_jitter(size = 0.5) +
+        geom_jitter(position = position_jitterdodge(), size = 0.5) + # jitterdodge needs groups to dodge (color = cohort)
+        # geom_jitter(size = 0.5) +
         ggtitle(paste(i))
 
     signcytokines_kleiner[[i]] <- ploti
@@ -290,9 +294,6 @@ Other interesting findings to consider:
 
 ## Linear model for TE
 ```{r lm_te}
-# Run linear mixed model
-# GALA$te <- as.numeric(GALA$te)
-
 # count n
 # summary(GALA$te) # 18 NA
 
@@ -303,21 +304,21 @@ lm_GALA_te <- olink_lmer(GALA,
 
 # Extract list of significant cytokines
 sign_cytokines <- lm_GALA_te %>%
-    filter(Adjusted_pval < 0.05/92) %>% # Bonferroni = 92
+    filter(Adjusted_pval < 0.05) %>% # Bonferroni = 92, however adjusted pval already adjusted with Benjamini-Hochberg
     pull(Assay)
-print(sign_cytokines) # 57 cytokines significant (54 when using corr_NPX)
+print(sign_cytokines) # 68 cytokines significant 
 ```
-57 cytokines have p<0.05 after Bonferroni correction for multiple testing.
+68 cytokines have p<0.05 after Benjamini-Hochberg correction for multiple testing.
 
 ## Plot cytokines with significant linear correlation with TE
 ```{r plot_sign_TE, warning=FALSE}
 # Prepare list for graphs
 signcytokines_te <- list()
 
-for(i in sign_cytokines[1:54]) {
+for(i in sign_cytokines[1:68]) {
     ploti <- GALA %>%
         filter(Assay == i) %>%
-        ggplot(aes(x = as.numeric(te), y = corr_NPX)) +
+        ggplot(aes(x = te, y = NPX)) +
         geom_point(aes(color = cohort)) +
         geom_smooth(method = lm, color = "black") +
         scale_x_log10() +
@@ -328,12 +329,30 @@ for(i in sign_cytokines[1:54]) {
 }
 
 # To save plotgrid as pdf
-# pdf(here::here("doc/images/GALA_signcytokines_te.pdf"), height = 35, width = 40) # height = 5 for each row of 8 -> 35 for 7x8
+# pdf(here::here("doc/images/GALA_signcytokines_te.pdf"), height = 45, width = 40) # height = 5 for each row of 8 -> 45 for 9x8
 # do.call('grid.arrange', c(signcytokines_te, ncol=8))
 # dev.off()
 ```
 
 - In addition to SCF, TRAIL, CXCL5, CCL23 also show negative correlation with TE
+
+
+## Linear model for outcome
+```{r lm_death}
+# count n
+# summary(GALA$te) # 18 NA
+
+lm_GALA_death <- olink_lmer(GALA, 
+           variable = "", 
+           outcome = "NPX",
+           random = "cohort")
+
+# Extract list of significant cytokines
+sign_cytokines <- lm_GALA_death %>%
+    filter(Adjusted_pval < 0.05) %>% # adjusted pval already adjusted with Benjamini-Hochberg
+    pull(Assay)
+print(sign_cytokines) #  cytokines significant
+```
 
 ## Cytokine functions of top correlations
 - HGF hepatocyte growth factor regulates cell growth, cell motility and morphogenesis in numerous cell and tissue types (https://www.ncbi.nlm.nih.gov/gene/3082). Higher levels of HGF have been associated with the presence of peripheral arterial disease (doi: 10.1177/0003319720912935).
