@@ -9,8 +9,11 @@ source(here::here("R/package-loading.R"))
 load(here::here("data/GALA.rda"))
 
 # Need to have each cytokine in a column
+# dput(names(GALA_heatmap)) # get list of column names
 GALA_heatmap <- pivot_wider(data = GALA,
-                            id_cols = c(SampleID, cohort, age, gender,
+                            id_cols = c(SampleID,
+                                        cohort, gender, # factor
+                                        age, # numeric
                                         kleiner, fibrosis, nas_inflam, nas_steatosis, te_fibrosis_6, te_fibrosis_8, inflam, steatosis_binary,  # liver parameters as factors
                                         te, kleiner_numeric, inflam_numeric, steatosis_numeric, elf, # numeric liver parameters
                                         bmi, hr, map, # clinical numerical variables
@@ -31,23 +34,32 @@ GALA_heatmap <- pivot_wider(data = GALA,
                             values_from = NPX)
 # Results in df with 531 obs (number of participants) and 92 variables + the number of variables added as id_cols = 172
 
-str(GALA_heatmap[ , c(1:10)]) # check
+# str(GALA_heatmap[ , c(1:10)]) # check
+
 # Save as df
 # GALA_wide <- GALA_heatmap
-# usethis::use_data(GALA_wide, overwrite = T) #not run since Aug 17
+# usethis::use_data(GALA_wide, overwrite = T)
 
 
 # Save colnames to be included in heatmap as vector
 # all_variables <- names(GALA_heatmap[, 3:ncol(GALA_heatmap)])
-all_numeric_variables <- names(GALA_heatmap[, c(4:22, 26, 27:ncol(GALA_heatmap))])
-all_blood_markers <- names(GALA_heatmap[ , c(11:22, 27:ncol(GALA_heatmap))])
-all_cytokines <- names(GALA_heatmap[, 27:ncol(GALA_heatmap)])
-# test_variables <- names(GALA_heatmap[, c(5,10,12,16)]) # select a smaller number of variables
+all_numeric_variables <- c(all_clinical_numeric, all_genetics, all_cytokines) #150 numeric variables
+all_cytokines <- names(GALA_heatmap[, 81:ncol(GALA_heatmap)])
+all_clinical_numeric <- names(GALA_heatmap[ , c("age", "te", "kleiner_numeric", "inflam_numeric", "steatosis_numeric", "elf", "bmi", "hr", "map", "iga", "igg", "igm", "alt", "ast", "ggt", "crp", "ldl", "hdl", "trigly", "homair", "proc3", "days_to_hospInf2", "days_to_LRE2", "days_to_mort2")])
+all_genetics <- names(GALA_heatmap[ , c("LYPLAL1", "MARC1", "ERLIN1", "GPAM", "SERPINA1", "APOH", "TM6SF2", "APOC1", "MBOAT7", "GCKR", "PNPLA3", "PPARG", "HSD17B13", "MTTP", "SLC39A8", "TRIB1", "AKNA", "PRS_alcohol", "PRS_BMI", "PRS_CAD", "PRS_CHD", "PRS_CRP", "PRS_GGT", "PRS_HDL", "PRS_height", "PRS_IBD", "PRS_IL6", "PRS_LDL", "PRS_ALT", "PRS_risk", "PRS_stroke", "PRS_T2D", "PRS_TC", "PRS_TG")])
+clinliver_SNPs <- names(GALA_heatmap[ , c("te", "kleiner_numeric", "inflam_numeric", "steatosis_numeric", "LYPLAL1", "MARC1", "ERLIN1", "GPAM", "SERPINA1", "APOH", "TM6SF2", "APOC1", "MBOAT7", "GCKR", "PNPLA3", "PPARG", "HSD17B13", "MTTP", "SLC39A8", "TRIB1", "AKNA")])
+clin_PRSs <- names(GALA_heatmap[ , c("te", "kleiner_numeric", "inflam_numeric", "steatosis_numeric", "bmi", "PRS_BMI", "homair", "PRS_T2D", "hdl", "PRS_HDL", "ldl", "PRS_LDL","PRS_TC", "trigly", "PRS_TG", "PRS_CAD", "PRS_CHD", "PRS_stroke", "alt", "PRS_ALT", "ast", "ggt", "PRS_GGT", "iga", "igg", "igm", "crp", "PRS_CRP", "IL6", "PRS_IL6", "PRS_IBD", "PRS_alcohol", "PRS_risk", "PRS_height")])
+input_var_factor <- names(GALA_wide[, c("cohort", "gender", "abstinent", "overuse", "excess_drink_followup")])
+outcome_var_numeric <- names(GALA_wide[, c("te", "kleiner_numeric", "inflam_numeric", "steatosis_numeric", "elf", "days_to_hospInf2", "days_to_LRE2", "days_to_mort2")])
+outcome_var_factor <- names(GALA_wide[, c("kleiner", "fibrosis", "nas_inflam", "nas_steatosis", "te_fibrosis_6", "te_fibrosis_8", "inflam", "steatosis_binary", "hospInfection", "liverrelated_event", "allMortality", "any_event_tot", "hospInf_1yr", "LRE_1yr", "mort_1yr", "any_event_1yr")])
+
 
 # Assign selected variables to the vector "variables", which will be used for correlation matrix and plotting
 variables <- all_numeric_variables
-# variables <- all_blood_markers
+# variables <- c(all_clinical_numeric, all_genetics)
 # variables <- all_cytokines
+# variables <- clin_PRSs
+# variables <- clinliver_SNPs
 
 # Create correlation matrix
 cor_matrix <- round(cor(GALA_heatmap[, variables],
@@ -75,12 +87,17 @@ cor_matrix %>%
     geom_tile(aes(fill=value), color="white") +
     scale_fill_gradient2(low="blue", high="red", mid="white",
                          midpoint=0, limit=c(-1,1), name="Correlation\n(Spearman)") +
-    theme(axis.text.x = element_text(angle=90, vjust=0.5, size=6, hjust=1),
-          axis.text.y = element_text(size=6),
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, size=15, hjust=1),
+          axis.text.y = element_text(size=15),
           axis.title = element_blank()) +
-    ggtitle("All blood markers - ProC3") +
+    ggtitle("Clinical liver variables + SNPs") +
     ylim(variables2) + xlim(variables2) + # Select variables vector for xlim/ylim, to ensure a nice triangular heatmap
     coord_equal()
+
+# Plot, then save
+# ggsave(here::here("doc/images/heatmap_all_numeric.jpg"), height = 12, width = 14)
+# ggsave(here::here("doc/images/heatmap_clin_PRS.jpg"), height = 12, width = 14)
+ggsave(here::here("doc/images/heatmap_clin_SNP.jpg"), height = 12, width = 14)
 
 # Order cytokines in the order highest to lowest R with HGF
 HGF <- cor_matrix %>%
@@ -90,12 +107,12 @@ HGF <- cor_matrix %>%
 variables2 <- unique(HGF$Var3)
 # setdiff(variables, variables2) # check that we have included all cytokines
 
-# Order cytokines in the order highest to lowest R with proc3
-proc3 <- cor_matrix %>%
-    filter(Var1 == "proc3" | Var2 == "proc3") %>%
-    mutate(Var3 = ifelse(Var1 == "proc3", Var2, Var1)) %>%
+# Order cytokines in the order highest to lowest R with te
+te <- cor_matrix %>%
+    filter(Var1 == "te" | Var2 == "te") %>%
+    mutate(Var3 = ifelse(Var1 == "te", Var2, Var1)) %>%
     arrange(desc(value))
-variables2 <- unique(proc3$Var3)
+variables2 <- unique(te$Var3)
 
 # Plot, then save
 # ggsave(here::here("doc/images/all_cyto_ordered.jpg"),
@@ -107,10 +124,10 @@ variables2 <- unique(proc3$Var3)
 ### Graph only certain correlations
 # Extract all correlations with te with value > 0.5
 predictors <- cor_matrix %>% # Requires cor_matrix to include both lower and upper tri
-    filter(Var2 == "te" | Var1 == "te") %>%
-    filter(value > 0.5 | value < -0.5) %>%
-    arrange(desc(value))
-variables2 <- unique(predictors$Var1)
+    filter(Var2 == "days_to_LRE2" | Var1 == "days_to_LRE2") %>%
+    filter(value > 0.4 | value < -0.4) %>%
+    arrange(desc(value)) #use desc(value) for descending
+variables3 <- unique(predictors$Var1)
 
 cor_matrix %>%
     ggplot(aes(Var2, Var1)) +
@@ -120,8 +137,8 @@ cor_matrix %>%
     theme(axis.text.x = element_text(angle=90, vjust=0.5, size=10, hjust=1),
           axis.text.y = element_text(size=10),
           axis.title = element_blank()) +
-    ggtitle("Strongest correlations with TE") +
-    ylim(variables2) + xlim(variables2) +
+    ggtitle("Correlation with time to liver-related event R>|0.4|") +
+    ylim(variables3) + xlim(variables3) +
     coord_equal()
 
 
