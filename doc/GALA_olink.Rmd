@@ -1,7 +1,7 @@
 ---
 title: "GALA_olink"
 author: "Helene Bæk Juel"
-date: "8/5/2021"
+date: "9/10/2021"
 output: html_document
 ---
 
@@ -12,9 +12,12 @@ knitr::opts_chunk$set(echo = TRUE)
 source(here::here("R/package-loading.R"))
 ```
 
-## Load full dataset
-Can be skipped if olink3/4 loaded directly.
-```{r load-data, include=FALSE}
+# Load, wrangle and QC the three datasets: Olink, phenotypes and genetics
+The entire section can be skipped if loading the combined dataset directly (GALA.rda).
+
+## Load full Olink dataset
+Can be skipped (include=FALSE) if olink3/4 loaded directly.
+```{r load-olink}
 # Load data from raw NPX data
 olink <- OlinkAnalyze::read_NPX(here::here("data-raw/20202249_Juel_NPX.xlsx"))
 
@@ -48,10 +51,8 @@ olink4 <- olink3 %>%
 # TODO: consider whether this is needed - and if so, overwrite NPX (used in Olinkanalyze package)
 ```
 
-# Wrangling and QC
-
 ## Filter GALA samples
-```{r QC1}
+```{r QC1-olink}
 # Load dataset if not running "Load full dataset" chunk above
 # load(here::here("data/olink4.rda"))
 
@@ -65,6 +66,7 @@ GALA_olink <- GALA_olink %>%
 
 GALA_olink$sample_type <- NULL # remove sample_type column
 
+# TODO: Investigate why we only have 548 GALA samples (expected ~463+138 = 600)
 ```
 
 
@@ -76,7 +78,7 @@ olink_qc_plot(GALA_olink)
 Some samples have a QC warning and 2 appear to be outliers
 
 ## Further QC
-```{r QC2}
+```{r QC2-olink}
 # remove samples with QC warning
 GALA_olink <- GALA_olink %>%
     filter(QC_Warning == "Pass") # goes from 50416 to 49404 obs
@@ -91,8 +93,7 @@ GALA_olink$cohort <- NULL
 ```
 
 ## Load and wrangle phenotype data
-Can be skipped if merged dataset "GALA" loaded directly.
-```{r phenotype1, warning=FALSE}
+```{r load-phenotype, warning=FALSE}
 # TODO: Change to new QC'ed phenotype dataset
 GALA_pheno <- read_excel(here::here("data-raw/ALD_HP_outcome_HBJ.xlsx"))
 str(GALA_pheno)
@@ -125,7 +126,9 @@ GALA_pheno2 <- GALA_pheno %>%
                   excess_drink_followup), factor)) %>% # Change data columns to factor
 # TODO: order factors alcoholyears and abstinenceyears
   mutate(kleiner_numeric = if_else(is.na(kleiner_numeric), 0.5, kleiner_numeric)) # assign NA to 0.5, since those without a kleiner score are known to have no or low fibrosis
-
+```
+## Compute new endpoints from follow-up data
+```{r QC-phenotype, warning=FALSE}
 # Add more endpoint columns 
 GALA_pheno3 <- GALA_pheno2 %>%  
   mutate(days_to_hospInf2 = dplyr::if_else(is.na(days_to_hospInf), ifelse(allMortality == "no", 2*max(days_to_hospInf, na.rm = T), NA), days_to_hospInf), # If the patient did not have a hospInf (n=321), assign 2x max(days_to_hospInf) to pts who did not die and NA to those who died without having an infection (n=31). Those that were not followed up (n=155) retain NA. 
@@ -146,32 +149,28 @@ GALA_pheno3 <- GALA_pheno3 %>%
 # Change order of factors, if needed
 GALA_pheno3$cohort <- ordered(GALA_pheno3$cohort, levels = c("HP", "ALD"))
 
-# str(GALA_pheno3)
-
 # save dataset in data folder
 # usethis::use_data(GALA_pheno3, overwrite = T)
 ```
 
-
 ## Match and merge Olink with phenotype data
-Can be skipped if merged dataset "GALA" loaded directly.
 ```{r merge1}
 # Match and merge Olink with phenotype data
 GALA0 <- merge(GALA_olink, GALA_pheno3, by = "SampleID") # goes from 49404 to 49312 obs from GALA_olink = 1 ppt!
 
-# Find missing sample
+# Find missing sample in phenotype data
 print(setdiff(unique(GALA_olink$SampleID), GALA_pheno3$SampleID)) # ALD1302
+
+# Find missing samples in Olink data
+print(setdiff(unique(GALA_pheno3$SampleID), GALA_olink$SampleID)) # 81 missing samples
 
 ```
 TODO: replace phenotype dataset with final QC'd version
 TODO: add phenotype data for ALD1302
+TODO: investigate 81 missing Olink samples (59 ALD and 22 HP)
 
-## Add genotype SNP and PRS datasets
-Can be skipped if merged dataset "GALA" loaded directly.
-
-## Load genetic data
-Can be skipped if merged dataset "GALA" loaded directly.
-```{r phenotype2}
+## Load genetic data to add genotype SNP and PRS dataset
+```{r load-genotype}
 # Add PRS and SNP data
 ALD_gen <- read_excel(here::here("data-raw/genALD_HBJ.xlsx"), sheet = "combined") #489 obs
 HP_gen <- read_excel(here::here("data-raw/genHP_HBJ.xlsx"), sheet = "combined") #136 obs
@@ -185,23 +184,20 @@ GALA_gen <- GALA_gen %>%
 ```
 
 ## Merge genotypes with Olink+phenotype data
-Can be skipped if merged dataset "GALA" loaded directly.
 ```{r merge2}
 GALA <- merge(GALA0, GALA_gen, by = "SampleID") # goes from 49312 to 48852 obs from GALA0 = 5 ppts
 print(setdiff(unique(GALA0$SampleID), GALA_gen$SampleID)) # ALD2265, ALD2332, ALD2547, ALD2558, ALD402
 
-# str(GALA[,c(74:108)]) # check
-
 # save dataset in data folder
 # usethis::use_data(GALA, overwrite = T)
 ```
-TODO: investigate why we are missing genotypes for these 5
+TODO: investigate why we are missing genotypes for these 5.
 
 ## Load merged dataset
 If not loading and merging individual datasets
 ```{r load_merged}
 # Load dataset if not running the loading and merging chunks above
-load(here::here("data/GALA.rda"))
+# load(here::here("data/GALA.rda"))
 ```
 
 
@@ -209,33 +205,31 @@ load(here::here("data/GALA.rda"))
 
 ## Plot all cytokines vs Kleiner score
 Not included in current knit (include=FALSE).
-```{r plot_all_kleiner, warning=FALSE, include=FALSE}
+```{r plot_all_kleiner, warning=FALSE}
 # Olink ID lists for looping
-cytokines <- levels(as.factor(olink4$Assay)) # protein abbreviations
-cytokine_IDs <- levels(as.factor(olink4$OlinkID)) #Olink IDs
+cytokines <- levels(as.factor(olink3$Assay)) # protein abbreviations
+cytokine_IDs <- levels(as.factor(olink3$OlinkID)) #Olink IDs
 
 # Loop over all cytokines
 allcytokines_kleiner <- list()
 
 for(i in cytokines[1:92]) {
     ploti <- GALA %>%
+        # filter(!is.na(as.numeric(kleiner))) %>% #to plot only those with biopsy
         filter(Assay == i) %>%
         ggplot(aes(x = kleiner, y = NPX, color = cohort)) +
         geom_violin(draw_quantiles = c(0.5)) +
-        geom_jitter() +
+        geom_jitter(position = position_jitterdodge(), size = 0.5) + # jitterdodge needs groups to dodge (color = cohort)
         ggtitle(paste(i))
 
     allcytokines_kleiner[[i]] <- ploti
     print(ploti)
 }
 
-# TODO: fix scatterplot in NA column and place NA first
-
 # To save plotgrid as pdf
 # pdf(here::here("doc/images/GALA_allcytokines_kleiner.pdf"), height = 60, width = 40) # height = 5 for each row of 8 -> 60 for 12x8
 # do.call('grid.arrange', c(allcytokines_kleiner, ncol=8))
 # dev.off()
-
 ```
 
 ## Run ANOVA for Kleiner score
@@ -250,7 +244,7 @@ anova_GALA_kleiner <- olink_anova(GALA, variable = "kleiner")
 
 # Extract list of significant cytokines
 sign_cytokines <- anova_GALA_kleiner %>%
-    filter(Adjusted_pval < 0.05) %>% # Bonferroni = 92 tests, however adjusted pval already adjusted with Benjamini-Hochberg
+    filter(Adjusted_pval < 0.05) %>% 
     pull(Assay)
 print(sign_cytokines)
 ```
@@ -258,18 +252,17 @@ print(sign_cytokines)
 
 ## Plot significant cytokines (Kleiner)
 Not included in current knit if include=FALSE.
-```{r plot_sign_kleiner, warning=FALSE}
+```{r plot_sign_kleiner, warning=FALSE, include=FALSE}
 # Prepare list for graphs
 signcytokines_kleiner <- list()
 
 for(i in sign_cytokines[1:72]) {
     ploti <- GALA %>%
-        # filter(!is.na(as.numeric(kleiner))) %>%
+        # filter(!is.na(as.numeric(kleiner))) %>% #to plot only those with biopsy
         filter(Assay == i) %>%
         ggplot(aes(x = kleiner, y = NPX, color = cohort)) +
         geom_violin(draw_quantiles = c(0.5)) +
         geom_jitter(position = position_jitterdodge(), size = 0.5) + # jitterdodge needs groups to dodge (color = cohort)
-        # geom_jitter(size = 0.5) +
         ggtitle(paste(i))
 
     signcytokines_kleiner[[i]] <- ploti
@@ -304,7 +297,7 @@ lm_GALA_te <- olink_lmer(GALA,
 
 # Extract list of significant cytokines
 sign_cytokines <- lm_GALA_te %>%
-    filter(Adjusted_pval < 0.05) %>% # Bonferroni = 92, however adjusted pval already adjusted with Benjamini-Hochberg
+    filter(Adjusted_pval < 0.05) %>% 
     pull(Assay)
 print(sign_cytokines) # 68 cytokines significant 
 ```
@@ -338,45 +331,24 @@ for(i in sign_cytokines[1:68]) {
 
 
 ## Linear model for outcome
-```{r lm_death}
+TODO: Fix Error: grouping factors must have > 1 sampled level
+Maybe not needed after Lili runs their analysis.
+```{r lm_death, eval=FALSE, include=FALSE}
 # count n
-# summary(GALA$te) # 18 NA
+# summary(GALA$days_to_LRE2) # 18 NA
 
-lm_GALA_death <- olink_lmer(GALA, 
-           variable = "", 
+lm_GALA_LRE <- olink_lmer(GALA,
+           variable = "days_to_LRE2",
            outcome = "NPX",
            random = "cohort")
 
 # Extract list of significant cytokines
-sign_cytokines <- lm_GALA_death %>%
+sign_cytokines <- lm_GALA_LRE %>%
     filter(Adjusted_pval < 0.05) %>% # adjusted pval already adjusted with Benjamini-Hochberg
     pull(Assay)
-print(sign_cytokines) #  cytokines significant
+print(sign_cytokines) # xx cytokines significant
 ```
 
-## Cytokine functions of top correlations
-- HGF hepatocyte growth factor regulates cell growth, cell motility and morphogenesis in numerous cell and tissue types (https://www.ncbi.nlm.nih.gov/gene/3082). Higher levels of HGF have been associated with the presence of peripheral arterial disease (doi: 10.1177/0003319720912935).
-- IL8 AKA CXCL8 is a major mediator of the inflammatory response. IL-8 is secreted by mononuclear macrophages, neutrophils, eosinophils, T lymphocytes, epithelial cells, and fibroblasts. It functions as a chemotactic factor by guiding the neutrophils to the site of infection. Bacterial and viral products rapidly induce IL-8 expression. IL-8 also participates with other cytokines in the proinflammatory signaling cascade and plays a role in systemic inflammatory response syndrome (SIRS). The binding of IL-8 to one of its receptors (IL-8RB/CXCR2) increases the permeability of blood vessels and increasing levels of IL-8 are positively correlated with increased severity of multiple disease outcomes (e.g., sepsis) (https://www.ncbi.nlm.nih.gov/gene/3576). 
-- IL6 functions in inflammation and the maturation of B cells. In addition, the encoded protein has been shown to be an endogenous pyrogen capable of inducing fever in people with autoimmune diseases or infections. The protein is primarily produced at sites of acute and chronic inflammation, where it is secreted into the serum and induces a transcriptional inflammatory response through interleukin 6 receptor, alpha. The functioning of this gene is implicated in a wide variety of inflammation-associated disease states, including suspectibility to diabetes mellitus and systemic juvenile rheumatoid arthritis (https://www.ncbi.nlm.nih.gov/gene/3569).
-- uPA urokinase plasminogen activator (PLAU) is a secreted serine protease that converts plasminogen to plasmin (https://www.ncbi.nlm.nih.gov/gene/5328). 
-- FGF21 fibroblast growth factor 21, (also FGF23). FGF family members possess broad mitogenic and cell survival activities and are involved in a variety of biological processes. This protein is a secreted endocrine factor that functions as a major metabolic regulator. The encoded protein stimulates the uptake of glucose in adipose tissue (https://www.ncbi.nlm.nih.gov/gene/26291). Exclusively produced in liver tissue. Appears to be regulated in several diseases (kidney, sarcopenia, aneurysms, DM2) 
-- SLAMF1 signaling lymphocytic activation molecule family member 1 is of quite unknown function (https://www.ncbi.nlm.nih.gov/gene/6504).
-- CCL20 The CC cytokines are proteins characterized by two adjacent cysteines. The protein encoded by this gene displays chemotactic activity for lymphocytes and can repress proliferation of myeloid progenitors (https://www.ncbi.nlm.nih.gov/gene/6364). 
-- LIFR Leukemia inhibitory factor receptor belongs to the type I cytokine receptor family. This protein combines with a high-affinity converter subunit, gp130, to form a receptor complex that mediates the action of the leukemia inhibitory factor, a polyfunctional cytokine that is involved in cellular differentiation, proliferation and survival in the adult and the embryo. 
-- SCF (negative correlation) stem cell factor = KITLG? This ligand is a pleiotropic factor that acts in utero in germ cell and neural cell development, and hematopoiesis, all believed to reflect a role in cell migration. In adults, it functions pleiotropically, while mostly noted for its continued requirement in hematopoiesis (https://www.ncbi.nlm.nih.gov/gene/4254). 
-
-
-## Suggestions for moving on
-1. Decide on outcome to assess/predict
-    + Split into high vs low fibrosis (Kleiner score 2-4 vs 0-1, with TE<6kPA included in the low group)
-    + Use Kleiner score (also add TE<6kPa to F0-1)
-    + Use TE
-    + Use Inflammation
-    + Use outcome data (presence of liver-related event, presence of infection)
-2. Run PCA (using decided outcome)
-3. Generate machine learning model to predict decided outcome using 2-layer cross-validation
-4. Plot heatmap showing which cytokines are correlated, then choose a few for further analysis
-5. Volcano plot for all significant cytokines
 
 ### The following packages and versions were used to create this report
 ```{r sessioninfo}
